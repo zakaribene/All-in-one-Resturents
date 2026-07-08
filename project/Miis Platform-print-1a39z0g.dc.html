@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style data-omelette-print-defaults>
+@media print {
+  @page { margin: 0.5in; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+  figure, table, pre, blockquote, img, svg, tr, [class~="card" i] { break-inside: avoid; }
+  img, svg { max-width: 100%; }
+  p { orphans: 3; widows: 3; }
+}
+</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#EEF1F6;color:#0E1A2B;-webkit-font-smoothing:antialiased;}
+a{color:#2563EB;text-decoration:none;} a:hover{color:#1D4FD7;}
+button{font-family:inherit;}
+input,select{font-family:inherit;}
+::-webkit-scrollbar{width:10px;height:10px;} ::-webkit-scrollbar-thumb{background:#cfd8e6;border-radius:8px;border:2px solid #EEF1F6;}
+@keyframes toastIn{from{opacity:0;transform:translateX(28px) scale(.97);}to{opacity:1;transform:none;}}
+@keyframes ringBell{0%{transform:rotate(0);}15%{transform:rotate(16deg);}30%{transform:rotate(-14deg);}45%{transform:rotate(11deg);}60%{transform:rotate(-8deg);}75%{transform:rotate(4deg);}100%{transform:rotate(0);}}
+@keyframes popIn{from{opacity:0;transform:scale(.9);}to{opacity:1;transform:none;}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;">
+
+  <div style="position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:18px;padding:12px 22px;background:rgba(255,255,255,.9);backdrop-filter:blur(14px);border-bottom:1px solid #E6EBF2;">
+    <div style="display:flex;align-items:center;gap:11px;">
+      <div style="width:34px;height:34px;border-radius:9px;background:{{ accent }};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">M</div>
+      <div style="display:flex;flex-direction:column;line-height:1.1;">
+        <span style="font-weight:800;font-size:16px;letter-spacing:-.02em;">{{ platformName }}</span>
+        <span style="font-size:11px;color:#8896A8;font-weight:600;">Restaurant OS</span>
+      </div>
+    </div>
+    <div style="width:1px;height:26px;background:#E6EBF2;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <sc-for list="{{ topSwitch }}" as="sw" hint-placeholder-count="4">
+        <button style="{{ sw.style }}" onClick="{{ sw.onClick }}">{{ sw.label }}</button>
+      </sc-for>
+    </div>
+    <div style="margin-left:auto;font-size:11px;color:#8896A8;font-weight:700;font-family:'JetBrains Mono',monospace;">PROTOTYPE</div>
+  </div>
+
+  <!-- ============ ADMIN ============ -->
+  <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;min-height:calc(100vh - 60px);">
+    <aside style="width:238px;flex:0 0 238px;background:#fff;border-right:1px solid #E6EBF2;padding:18px 14px;display:flex;flex-direction:column;gap:6px;">
+      <div style="padding:6px 10px 14px;font-size:11px;font-weight:800;letter-spacing:.08em;color:#94A3B8;text-transform:uppercase;">Admin Console</div>
+      <sc-for list="{{ adminNav }}" as="n" hint-placeholder-count="4">
+        <button style="{{ n.style }}" onClick="{{ n.onClick }}"><span style="width:20px;text-align:center;opacity:.8;">{{ n.ic }}</span><span style="display:flex;flex-direction:column;line-height:1.15;"><span>{{ n.en }}</span><span style="font-size:11px;font-weight:600;opacity:.65;">{{ n.so }}</span></span></button>
+      </sc-for>
+      <div style="margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px;background:#F6F8FB;border-radius:12px;">
+        <div style="width:34px;height:34px;border-radius:99px;background:#0E1A2B;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">SA</div>
+        <div style="line-height:1.2;"><div style="font-weight:700;font-size:13px;">Super Admin</div><div style="font-size:11px;color:#8896A8;">Platform owner</div></div>
+      </div>
+    </aside>
+
+    <main style="flex:1;padding:28px 34px;overflow:auto;">
+      <!-- OVERVIEW -->
+      <sc-if value="{{ aOverview }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-bottom:22px;"><h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.02em;">Guudmar · Overview</h1><p style="margin:0;color:#64748B;font-size:14px;">Fiiri xaaladda dhammaan maqaayadaha · Everything across your venues.</p></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px;">
+          <sc-for list="{{ stats }}" as="st" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(16,26,43,.04);">
+              <div style="font-size:12px;color:#8896A8;font-weight:700;margin-bottom:10px;">{{ st.en }} · {{ st.so }}</div>
+              <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;">{{ st.val }}</div>
+              <div style="margin-top:8px;font-size:12px;font-weight:700;color:{{ st.tone }};">{{ st.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;">
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:22px;">
+            <div style="font-weight:800;font-size:15px;margin-bottom:2px;">Orders by restaurant</div>
+            <div style="font-size:12px;color:#8896A8;margin-bottom:18px;">Dalabyada 30-cisho · last 30 days</div>
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <sc-for list="{{ chartRows }}" as="c" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:120px;font-size:13px;font-weight:600;color:#3A465A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ c.name }}</div>
+                  <div style="flex:1;height:10px;background:#F1F4F9;border-radius:99px;overflow:hidden;"><div style="height:100%;width:{{ c.barW }};background:{{ c.fg }};border-radius:99px;"></div></div>
+                  <div style="width:52px;text-align:right;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;">{{ c.ordStr }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:22px;">
+            <div style="font-weight:800;font-size:15px;margin-bottom:18px;">Activity</div>
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <sc-for list="{{ activity }}" as="a" hint-placeholder-count="4">
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                  <div style="width:9px;height:9px;border-radius:99px;background:{{ a.dot }};margin-top:5px;flex:0 0 auto;"></div>
+                  <div style="line-height:1.35;"><div style="font-size:13px;font-weight:700;">{{ a.t }}</div><div style="font-size:12px;color:#8896A8;">{{ a.d }}</div></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- RESTAURANTS -->
+      <sc-if value="{{ aRest }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap;">
+          <div><h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.02em;">Maqaayadaha · Restaurants</h1><p style="margin:0;color:#64748B;font-size:14px;">Diiwaan geli, fiiri, xir · Register, inspect, suspend.</p></div>
+          <button style="{{ btnPrimary }}"><span style="font-size:17px;line-height:1;">+</span> Diiwaan geli maqaayad · Add restaurant</button>
+        </div>
+        <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:2.2fr 1.4fr .8fr .9fr 1fr 1.4fr;gap:12px;padding:14px 20px;background:#F8FAFC;border-bottom:1px solid #E6EBF2;font-size:11px;font-weight:800;letter-spacing:.04em;color:#94A3B8;text-transform:uppercase;">
+            <div>Restaurant</div><div>Owner</div><div>Plan</div><div>Orders</div><div>Status</div><div style="text-align:right;">Actions</div>
+          </div>
+          <sc-for list="{{ restaurants }}" as="r" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:2.2fr 1.4fr .8fr .9fr 1fr 1.4fr;gap:12px;padding:15px 20px;border-bottom:1px solid #F1F4F9;align-items:center;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:40px;height:40px;border-radius:11px;background:{{ r.avBg }};color:{{ r.avFg }};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:0 0 auto;">{{ r.initials }}</div>
+                <div style="line-height:1.25;min-width:0;"><div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</div><div style="font-size:12px;color:#8896A8;">{{ r.city }}</div></div>
+              </div>
+              <div style="font-size:13px;color:#3A465A;">{{ r.owner }}</div>
+              <div style="font-size:12px;font-weight:800;color:#526077;">{{ r.plan }}</div>
+              <div style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;">{{ r.ordStr }}</div>
+              <div><span style="{{ r.statusStyle }}">{{ r.statusLabel }}</span></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button style="padding:7px 12px;border-radius:8px;border:1px solid #E6EBF2;background:#fff;color:#526077;font-size:12px;font-weight:700;cursor:pointer;">View</button>
+                <button style="{{ r.actionStyle }}" onClick="{{ r.onToggle }}">{{ r.actionLabel }}</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- NOTIFICATIONS -->
+      <sc-if value="{{ aNotif }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-bottom:22px;"><h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.02em;">Fariimaha · Notifications</h1><p style="margin:0;color:#64748B;font-size:14px;">U dir dhammaan ama hal maqaayad · Broadcast to all or a single venue.</p></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:24px;">
+            <div style="font-size:12px;font-weight:800;color:#526077;margin-bottom:8px;">Cida loo dirayo · Send to</div>
+            <div style="display:flex;gap:4px;background:#F1F4F9;padding:4px;border-radius:10px;margin-bottom:20px;">
+              <button style="{{ targetAllStyle }}" onClick="{{ setTargetAll }}">Dhammaan · All</button>
+              <button style="{{ targetOneStyle }}" onClick="{{ setTargetOne }}">Hal maqaayad · One</button>
+            </div>
+            <sc-if value="{{ isTargetOne }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-bottom:18px;">
+                <label style="display:block;font-size:12px;font-weight:800;color:#526077;margin-bottom:7px;">Dooro maqaayad · Restaurant</label>
+                <select value="{{ notifRest }}" onChange="{{ onNotifRest }}" style="width:100%;padding:11px 13px;border:1px solid #DDE3EC;border-radius:10px;font-size:14px;background:#fff;color:#0E1A2B;">
+                  <sc-for list="{{ restaurants }}" as="r" hint-placeholder-count="6"><option value="{{ r.id }}">{{ r.name }}</option></sc-for>
+                </select>
+              </div>
+            </sc-if>
+            <div style="margin-bottom:18px;">
+              <label style="display:block;font-size:12px;font-weight:800;color:#526077;margin-bottom:7px;">Cinwaan · Title</label>
+              <input value="{{ notifTitle }}" onChange="{{ onNotifTitle }}" placeholder="Tusaale: Casriyeyn cusub" style="width:100%;padding:11px 13px;border:1px solid #DDE3EC;border-radius:10px;font-size:14px;" />
+            </div>
+            <div style="margin-bottom:22px;">
+              <label style="display:block;font-size:12px;font-weight:800;color:#526077;margin-bottom:7px;">Qoraalka · Message</label>
+              <textarea value="{{ notifBody }}" onChange="{{ onNotifBody }}" rows="4" placeholder="Qor fariintaada halkan…" style="width:100%;padding:11px 13px;border:1px solid #DDE3EC;border-radius:10px;font-size:14px;resize:vertical;"></textarea>
+            </div>
+            <button style="{{ btnPrimary }}" onClick="{{ onSend }}">{{ sendLabel }}</button>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#94A3B8;letter-spacing:.04em;text-transform:uppercase;margin-bottom:12px;">Live preview · Sida ay u muuqan doonto</div>
+            <div style="background:#0E1A2B;border-radius:20px;padding:22px;box-shadow:0 20px 50px -20px rgba(16,26,43,.5);">
+              <div style="display:flex;align-items:flex-start;gap:14px;background:#fff;border-radius:14px;padding:16px;">
+                <div style="width:42px;height:42px;border-radius:11px;background:{{ accent }};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;flex:0 0 auto;">M</div>
+                <div style="min-width:0;flex:1;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="font-weight:800;font-size:13px;">{{ platformName }}</span><span style="font-size:11px;color:#94A3B8;">now</span></div>
+                  <div style="font-weight:700;font-size:14px;margin:4px 0 3px;">{{ notifPreviewTitle }}</div>
+                  <div style="font-size:13px;color:#526077;line-height:1.4;">{{ notifPreviewBody }}</div>
+                </div>
+              </div>
+              <div style="text-align:center;margin-top:14px;font-size:12px;color:#94A3B8;font-weight:600;">→ {{ notifTargetLabel }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- BILLING -->
+      <sc-if value="{{ aBilling }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-bottom:22px;"><h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.02em;">Lacagta · Billing</h1><p style="margin:0;color:#64748B;font-size:14px;">Qorshayaal iyo lacag-bixin · Plans &amp; payment collection.</p></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:22px;"><div style="font-weight:800;font-size:15px;">Free</div><div style="font-size:28px;font-weight:800;margin:8px 0;">$0<span style="font-size:13px;color:#8896A8;font-weight:600;">/bil</span></div><div style="font-size:13px;color:#64748B;line-height:1.7;">1 maqaayad · 20 products<br>QR ordering<br>Basic reports</div></div>
+          <div style="background:#fff;border:2px solid {{ accent }};border-radius:16px;padding:22px;position:relative;"><div style="position:absolute;top:-11px;left:22px;background:{{ accent }};color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:99px;">POPULAR</div><div style="font-weight:800;font-size:15px;">Basic</div><div style="font-size:28px;font-weight:800;margin:8px 0;">$19<span style="font-size:13px;color:#8896A8;font-weight:600;">/bil</span></div><div style="font-size:13px;color:#64748B;line-height:1.7;">3 maqaayado · unlimited<br>Live orders + sound<br>Sales filtering</div></div>
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:22px;"><div style="font-weight:800;font-size:15px;">Pro</div><div style="font-size:28px;font-weight:800;margin:8px 0;">$49<span style="font-size:13px;color:#8896A8;font-weight:600;">/bil</span></div><div style="font-size:13px;color:#64748B;line-height:1.7;">Unlimited venues<br>Broadcast notifications<br>Priority support</div></div>
+        </div>
+        <div style="background:linear-gradient(180deg,#F8FAFC,#fff);border:1px dashed #C7D2E0;border-radius:16px;padding:26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;"><span style="font-weight:800;font-size:16px;">Lacag-bixin toos ah · Payment collection</span><span style="background:#FEF3C7;color:#B45309;font-size:11px;font-weight:800;padding:4px 10px;border-radius:99px;">SOON · MUSTAQBAL</span></div>
+          <p style="margin:0 0 18px;color:#64748B;font-size:14px;max-width:620px;">Isku xir API-ga bixinta si macaamiishu ay si toos ah ugu bixiyaan marka ay dalbadaan. Connect mobile-money so customers pay automatically at checkout.</p>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 18px;opacity:.85;"><div style="width:38px;height:38px;border-radius:9px;background:#E7F6EE;color:#12A150;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">EVC</div><div><div style="font-weight:700;font-size:14px;">EVC Plus</div><div style="font-size:12px;color:#94A3B8;">Not connected</div></div><button style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid #E6EBF2;background:#F6F8FB;color:#94A3B8;font-size:12px;font-weight:700;cursor:not-allowed;">Connect</button></div>
+            <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 18px;opacity:.85;"><div style="width:38px;height:38px;border-radius:9px;background:#EEF3FF;color:#2563EB;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;">ZAAD</div><div><div style="font-weight:700;font-size:14px;">ZAAD</div><div style="font-size:12px;color:#94A3B8;">Not connected</div></div><button style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid #E6EBF2;background:#F6F8FB;color:#94A3B8;font-size:12px;font-weight:700;cursor:not-allowed;">Connect</button></div>
+            <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 18px;opacity:.85;"><div style="width:38px;height:38px;border-radius:9px;background:#F3E8FF;color:#8B5CF6;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">eDA</div><div><div style="font-weight:700;font-size:14px;">eDahab</div><div style="font-size:12px;color:#94A3B8;">Not connected</div></div><button style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid #E6EBF2;background:#F6F8FB;color:#94A3B8;font-size:12px;font-weight:700;cursor:not-allowed;">Connect</button></div>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  </sc-if>
+
+  <!-- ============ LOGIN ============ -->
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+    <div style="min-height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:40px 20px;background:radial-gradient(1200px 500px at 50% -10%, color-mix(in srgb,var(--x) 0%, #E8EEFB), #EEF1F6);">
+      <div style="width:100%;max-width:420px;background:#fff;border:1px solid #E6EBF2;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px -30px rgba(16,26,43,.35);">
+        <div style="height:120px;background:repeating-linear-gradient(135deg, hsl(212 45% 90%) 0 12px, hsl(212 45% 86%) 12px 24px);position:relative;">
+          <div style="position:absolute;left:0;bottom:8px;right:0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#5b6b86;">cover photo · sawirka maqaayada</div>
+        </div>
+        <div style="padding:0 30px 30px;margin-top:-34px;">
+          <div style="width:68px;height:68px;border-radius:18px;background:#fff;border:1px solid #E6EBF2;box-shadow:0 8px 20px -8px rgba(16,26,43,.25);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;color:{{ accent }};margin-bottom:16px;">B</div>
+          <h1 style="margin:0 0 3px;font-size:22px;letter-spacing:-.02em;">Ku soo dhawoow · Welcome back</h1>
+          <p style="margin:0 0 22px;color:#64748B;font-size:14px;">Gal akoonkaaga maqaayada · Sign in to your venue.</p>
+          <label style="display:block;font-size:12px;font-weight:800;color:#526077;margin-bottom:7px;">Isticmaale · Username</label>
+          <input value="beder" style="width:100%;padding:12px 14px;border:1px solid #DDE3EC;border-radius:11px;font-size:14px;margin-bottom:16px;" />
+          <label style="display:block;font-size:12px;font-weight:800;color:#526077;margin-bottom:7px;">Furaha sirta · Password</label>
+          <input value="********" type="password" style="width:100%;padding:12px 14px;border:1px solid #DDE3EC;border-radius:11px;font-size:14px;margin-bottom:20px;" />
+          <button style="{{ btnPrimary }};width:100%;padding:13px;" onClick="{{ onLogin }}">Gal · Login</button>
+          <div style="text-align:center;margin-top:18px;font-size:12px;color:#94A3B8;">Powered by <b style="color:#526077;">{{ platformName }}</b> · Restaurant OS</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ RESTAURANT DASHBOARD ============ -->
+  <sc-if value="{{ isRest }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;min-height:calc(100vh - 60px);">
+    <aside style="width:238px;flex:0 0 238px;background:#fff;border-right:1px solid #E6EBF2;padding:18px 14px;display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;align-items:center;gap:11px;padding:6px 8px 16px;">
+        <div style="width:38px;height:38px;border-radius:11px;background:hsl(212 65% 95%);color:hsl(212 55% 42%);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;">B</div>
+        <div style="line-height:1.2;"><div style="font-weight:800;font-size:14px;">Beder Restaurant</div><div style="font-size:11px;color:#8896A8;">Hargeisa · Pro</div></div>
+      </div>
+      <sc-for list="{{ restNav }}" as="n" hint-placeholder-count="5">
+        <button style="{{ n.style }}" onClick="{{ n.onClick }}"><span style="width:20px;text-align:center;opacity:.8;">{{ n.ic }}</span><span style="display:flex;flex-direction:column;line-height:1.15;"><span>{{ n.en }}</span><span style="font-size:11px;font-weight:600;opacity:.65;">{{ n.so }}</span></span></button>
+      </sc-for>
+    </aside>
+
+    <main style="flex:1;padding:26px 32px;overflow:auto;">
+      <!-- ORDERS -->
+      <sc-if value="{{ rOrders }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap;">
+          <div><h1 style="margin:0 0 4px;font-size:24px;letter-spacing:-.02em;">Dalabyada · Live orders</h1><p style="margin:0;color:#64748B;font-size:14px;">Dalabyada QR-ka ka imanaya · Orders arriving from tables.</p></div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button style="{{ btnGhostSm }}" onClick="{{ onSound }}"><span style="font-size:15px;">🔔</span> Sound: <b style="margin-left:2px;">{{ soundOn }}</b></button>
+            <button style="{{ btnPrimarySm }}" onClick="{{ onSimulate }}">▶ Test order</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start;">
+          <div style="background:#F8FAFC;border:1px solid #E6EBF2;border-radius:16px;padding:14px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 6px 12px;font-weight:800;font-size:13px;"><span style="width:9px;height:9px;border-radius:99px;background:#E5484D;"></span>Cusub · New <span style="margin-left:auto;background:#fff;border:1px solid #E6EBF2;border-radius:99px;padding:1px 9px;font-size:12px;">{{ newCount }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <sc-for list="{{ newO }}" as="o" hint-placeholder-count="1">
+                <div style="background:#fff;border:1px solid #F0C6C6;border-radius:13px;padding:14px;box-shadow:0 4px 14px -8px rgba(229,72,77,.4);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:800;font-size:14px;font-family:'JetBrains Mono',monospace;">{{ o.id }}</span><span style="font-size:11px;color:#94A3B8;">{{ o.when }}</span></div>
+                  <div style="{{ o.badgeStyle }}">{{ o.chIcon }} {{ o.chLabel }}</div>
+                  <div style="font-size:13px;color:#3A465A;line-height:1.5;margin-bottom:12px;">{{ o.itemsText }}</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:800;font-size:15px;">{{ o.totalStr }}</span><button style="{{ btnPrimarySm }}" onClick="{{ o.onAccept }}">Aqbal · Accept</button></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E6EBF2;border-radius:16px;padding:14px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 6px 12px;font-weight:800;font-size:13px;"><span style="width:9px;height:9px;border-radius:99px;background:#E8A317;"></span>Diyaarin · Preparing <span style="margin-left:auto;background:#fff;border:1px solid #E6EBF2;border-radius:99px;padding:1px 9px;font-size:12px;">{{ prepCount }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <sc-for list="{{ prepO }}" as="o" hint-placeholder-count="2">
+                <div style="background:#fff;border:1px solid #E6EBF2;border-radius:13px;padding:14px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:800;font-size:14px;font-family:'JetBrains Mono',monospace;">{{ o.id }}</span><span style="font-size:11px;color:#94A3B8;">{{ o.when }}</span></div>
+                  <div style="{{ o.badgeStyle }}">{{ o.chIcon }} {{ o.chLabel }}</div>
+                  <div style="font-size:13px;color:#3A465A;line-height:1.5;margin-bottom:12px;">{{ o.itemsText }}</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:800;font-size:15px;">{{ o.totalStr }}</span><button style="{{ btnGhostSm }}" onClick="{{ o.onComplete }}">Diyaar ✓ · Done</button></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E6EBF2;border-radius:16px;padding:14px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 6px 12px;font-weight:800;font-size:13px;"><span style="width:9px;height:9px;border-radius:99px;background:#12A150;"></span>Dhammaystiran · Done <span style="margin-left:auto;background:#fff;border:1px solid #E6EBF2;border-radius:99px;padding:1px 9px;font-size:12px;">{{ doneCount }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <sc-for list="{{ doneO }}" as="o" hint-placeholder-count="1">
+                <div style="background:#fff;border:1px solid #E6EBF2;border-radius:13px;padding:14px;opacity:.72;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:800;font-size:14px;font-family:'JetBrains Mono',monospace;">{{ o.id }}</span><span style="font-size:11px;color:#94A3B8;">{{ o.when }}</span></div>
+                  <div style="{{ o.badgeStyle }}">{{ o.chIcon }} {{ o.chLabel }}</div>
+                  <div style="font-size:13px;color:#3A465A;line-height:1.5;margin-bottom:8px;">{{ o.itemsText }}</div>
+                  <div style="font-weight:800;font-size:15px;">{{ o.totalStr }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- PRODUCTS -->
+      <sc-if value="{{ rProducts }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;gap:16px;flex-wrap:wrap;">
+          <div><h1 style="margin:0 0 4px;font-size:24px;letter-spacing:-.02em;">Cuntooyinka · Products</h1><p style="margin:0;color:#64748B;font-size:14px;">Diiwaan geli oo maamul · Add and manage your menu.</p></div>
+          <button style="{{ btnPrimary }}"><span style="font-size:17px;line-height:1;">+</span> Ku dar cunto · Add product</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
+          <sc-for list="{{ restCatTabs }}" as="c" hint-placeholder-count="5"><button style="{{ c.style }}" onClick="{{ c.onClick }}">{{ c.en }} · {{ c.so }}</button></sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+          <sc-for list="{{ restProducts }}" as="p" hint-placeholder-count="8">
+            <div style="background:#fff;border:1px solid #E6EBF2;border-radius:15px;overflow:hidden;">
+              <div style="height:104px;position:relative;{{ p.img }}"><span style="position:absolute;top:10px;right:10px;{{ p.pill }}" onClick="{{ p.onToggle }}">{{ p.statusLabel }}</span></div>
+              <div style="padding:13px;">
+                <div style="font-weight:700;font-size:14px;">{{ p.en }}</div>
+                <div style="font-size:12px;color:#8896A8;margin-bottom:8px;">{{ p.so }} · {{ p.catLabel }}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:800;font-size:15px;color:{{ accent }};">{{ p.priceStr }}</span><span style="font-size:11px;color:#94A3B8;font-weight:600;">{{ p.soldStr }}</span></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- CATEGORIES -->
+      <sc-if value="{{ rCats }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;gap:16px;flex-wrap:wrap;">
+          <div><h1 style="margin:0 0 4px;font-size:24px;letter-spacing:-.02em;">Qaybaha · Categories</h1><p style="margin:0;color:#64748B;font-size:14px;">Habee menu-gaaga · Organise your menu.</p></div>
+          <button style="{{ btnPrimary }}"><span style="font-size:17px;line-height:1;">+</span> Qayb cusub · Add category</button>
+        </div>
+        <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;overflow:hidden;max-width:640px;">
+          <sc-for list="{{ catList }}" as="c" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid #F1F4F9;">
+              <div style="width:36px;height:36px;border-radius:10px;background:{{ soft8 }};color:{{ accent }};display:flex;align-items:center;justify-content:center;font-weight:800;">≡</div>
+              <div style="flex:1;line-height:1.25;"><div style="font-weight:700;font-size:14px;">{{ c.en }} · {{ c.so }}</div><div style="font-size:12px;color:#8896A8;">{{ c.count }}</div></div>
+              <button style="padding:7px 12px;border-radius:8px;border:1px solid #E6EBF2;background:#fff;color:#526077;font-size:12px;font-weight:700;cursor:pointer;">Edit</button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- SALES -->
+      <sc-if value="{{ rSales }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-bottom:20px;"><h1 style="margin:0 0 4px;font-size:24px;letter-spacing:-.02em;">Iibka · Sales</h1><p style="margin:0;color:#64748B;font-size:14px;">Waxa la iibiyay oo dhan · Everything you've sold, filtered.</p></div>
+        <div style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:14px;padding:16px 20px;min-width:180px;"><div style="font-size:12px;color:#8896A8;font-weight:700;">Wadarta iibka · Total revenue</div><div style="font-size:26px;font-weight:800;margin-top:6px;">{{ totRevStr }}</div></div>
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:14px;padding:16px 20px;min-width:180px;"><div style="font-size:12px;color:#8896A8;font-weight:700;">Xaddiga la iibiyay · Units sold</div><div style="font-size:26px;font-weight:800;margin-top:6px;">{{ totSoldStr }}</div></div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:800;color:#526077;">Filter:</span>
+            <select value="{{ salesCat }}" onChange="{{ onSalesCat }}" style="padding:10px 13px;border:1px solid #DDE3EC;border-radius:10px;font-size:13px;font-weight:600;background:#fff;">
+              <sc-for list="{{ salesCatOpts }}" as="c" hint-placeholder-count="5"><option value="{{ c.id }}">{{ c.en }} · {{ c.so }}</option></sc-for>
+            </select>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:12px;padding:13px 20px;background:#F8FAFC;border-bottom:1px solid #E6EBF2;font-size:11px;font-weight:800;letter-spacing:.04em;color:#94A3B8;text-transform:uppercase;"><div>Product</div><div>Category</div><div>Price</div><div>Sold</div><div style="text-align:right;">Revenue</div></div>
+          <sc-for list="{{ salesRows }}" as="p" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:12px;padding:14px 20px;border-bottom:1px solid #F1F4F9;align-items:center;font-size:13px;">
+              <div style="font-weight:700;">{{ p.en }} <span style="color:#94A3B8;font-weight:500;">· {{ p.so }}</span></div>
+              <div style="color:#526077;">{{ p.catLabel }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;">{{ p.priceStr }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;">{{ p.soldStr }}</div>
+              <div style="text-align:right;font-weight:800;font-family:'JetBrains Mono',monospace;">{{ p.revStr }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- QR -->
+      <sc-if value="{{ rQr }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-bottom:20px;"><h1 style="margin:0 0 4px;font-size:24px;letter-spacing:-.02em;">QR Codes · Miisaska</h1><p style="margin:0;color:#64748B;font-size:14px;">QR kursi/miis kasta · A code per table. Scan without a table still works (takeaway).</p></div>
+        <div style="display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start;">
+          <div style="display:flex;flex-direction:column;gap:9px;">
+            <div style="font-size:12px;font-weight:800;color:#94A3B8;letter-spacing:.04em;text-transform:uppercase;margin-bottom:2px;">Miisaska · Tables</div>
+            <sc-for list="{{ tablesList }}" as="t" hint-placeholder-count="6"><button style="{{ t.style }}" onClick="{{ t.onSelect }}"><span>Miis {{ t.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;opacity:.7;">▦</span></button></sc-for>
+            <div style="display:flex;gap:8px;margin-top:2px;">
+              <input value="{{ newTableName }}" onChange="{{ onNewTable }}" placeholder="Miis cusub, ts. D01" style="flex:1;min-width:0;padding:10px 12px;border:1px solid #DDE3EC;border-radius:10px;font-size:13px;" />
+              <button style="{{ btnPrimarySm }}" onClick="{{ onAddTable }}">+ Ku dar</button>
+            </div>
+            <div style="font-size:12px;font-weight:800;color:#94A3B8;letter-spacing:.04em;text-transform:uppercase;margin:12px 0 -2px;">Kale · Other</div>
+            <sc-for list="{{ specialList }}" as="t" hint-placeholder-count="2"><button style="{{ t.style }}" onClick="{{ t.onSelect }}"><span>{{ t.icon }} {{ t.label }}</span><span style="font-size:11px;color:#94A3B8;font-weight:600;text-align:right;">{{ t.sub }}</span></button></sc-for>
+          </div>
+          <div style="background:#fff;border:1px solid #E6EBF2;border-radius:18px;padding:30px;display:flex;flex-direction:column;align-items:center;text-align:center;">
+            <div style="font-weight:800;font-size:18px;margin-bottom:2px;">Beder Restaurant</div>
+            <div style="font-size:13px;color:#64748B;margin-bottom:20px;">{{ selectedTableLabel }}</div>
+            <div style="border:1px solid #E6EBF2;border-radius:16px;box-shadow:0 12px 30px -18px rgba(16,26,43,.3);">{{ qrBig }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#94A3B8;margin:16px 0 20px;">miis.app/o/{{ selectedTableCode }}</div>
+            <div style="display:flex;gap:10px;"><button style="{{ btnPrimary }}">⤓ Download PNG</button><button style="{{ btnGhost }}">🖨 Print</button></div>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  </sc-if>
+
+  <!-- ============ CUSTOMER ============ -->
+  <sc-if value="{{ isCust }}" hint-placeholder-val="{{ true }}">
+    <div style="min-height:calc(100vh - 60px);display:flex;flex-direction:column;align-items:center;padding:26px 20px 60px;background:radial-gradient(900px 400px at 50% -5%, #E8EEFB, #EEF1F6);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;background:#fff;border:1px solid #E6EBF2;border-radius:99px;padding:8px 8px 8px 16px;">
+        <span style="font-size:13px;color:#64748B;font-weight:600;">Ku dayasho QR · Simulate scan:</span>
+        <button style="{{ btnPrimarySm }}" onClick="{{ onToggleTable }}">{{ custTableLabel }} ⇄</button>
+      </div>
+
+      <div style="width:390px;max-width:100%;height:750px;background:#0E1A2B;border-radius:44px;padding:11px;box-shadow:0 40px 90px -30px rgba(16,26,43,.55);position:relative;">
+        <div style="position:absolute;top:20px;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#0E1A2B;border-radius:99px;z-index:5;"></div>
+        <div style="width:100%;height:100%;background:#fff;border-radius:34px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+
+          <!-- MENU -->
+          <sc-if value="{{ custMenu }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1;overflow:auto;">
+            <div style="height:150px;position:relative;background:repeating-linear-gradient(135deg, hsl(212 45% 88%) 0 12px, hsl(212 45% 83%) 12px 24px);">
+              <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(14,26,43,.55));"></div>
+              <div style="position:absolute;left:16px;bottom:14px;right:16px;display:flex;align-items:flex-end;gap:12px;">
+                <div style="width:54px;height:54px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:{{ accent }};flex:0 0 auto;">B</div>
+                <div style="color:#fff;line-height:1.2;"><div style="font-weight:800;font-size:18px;">Beder Restaurant</div><div style="font-size:12px;opacity:.9;">Cunto Soomaali · Somali Kitchen</div></div>
+              </div>
+            </div>
+            <div style="padding:14px 16px 6px;">
+              <div style="display:inline-flex;align-items:center;gap:7px;background:{{ soft8 }};color:{{ accent }};font-size:12px;font-weight:800;padding:6px 12px;border-radius:99px;white-space:nowrap;">{{ custIcon }} {{ custTableLabel }} <span style="opacity:.7;font-weight:600;">· {{ custTableSub }}</span></div>
+            </div>
+            <div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;">
+              <sc-for list="{{ catTabs }}" as="c" hint-placeholder-count="5"><button style="{{ c.style }}" onClick="{{ c.onClick }}">{{ c.en }}</button></sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;padding:4px 16px 90px;">
+              <sc-for list="{{ custProducts }}" as="p" hint-placeholder-count="6">
+                <div style="display:flex;gap:12px;align-items:center;background:#fff;border:1px solid #EEF1F6;border-radius:15px;padding:10px;">
+                  <div style="width:66px;height:66px;border-radius:12px;flex:0 0 auto;{{ p.img }}"></div>
+                  <div style="flex:1;min-width:0;line-height:1.3;"><div style="font-weight:700;font-size:14px;">{{ p.en }}</div><div style="font-size:12px;color:#8896A8;margin-bottom:5px;">{{ p.so }}</div><div style="font-weight:800;font-size:15px;color:{{ accent }};">{{ p.priceStr }}</div></div>
+                  <sc-if value="{{ p.inCart }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
+                      <button style="width:32px;height:32px;border-radius:9px;border:1px solid #E6EBF2;background:#fff;font-size:18px;font-weight:700;cursor:pointer;color:#526077;" onClick="{{ p.onDec }}">−</button>
+                      <span style="min-width:18px;text-align:center;font-weight:800;">{{ p.qty }}</span>
+                      <button style="width:32px;height:32px;border-radius:9px;border:none;background:{{ accent }};color:#fff;font-size:18px;font-weight:700;cursor:pointer;" onClick="{{ p.onAdd }}">+</button>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ p.notInCart }}" hint-placeholder-val="{{ true }}">
+                    <button style="flex:0 0 auto;width:38px;height:38px;border-radius:11px;border:none;background:{{ soft12 }};color:{{ accent }};font-size:22px;font-weight:700;cursor:pointer;" onClick="{{ p.onAdd }}">+</button>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ cartHasItems }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:14px;right:14px;bottom:16px;">
+              <button style="{{ btnPrimary }};width:100%;padding:15px;border-radius:15px;font-size:15px;box-shadow:0 12px 28px -10px color-mix(in srgb,var(--x) 0%, rgba(37,99,235,.5));" onClick="{{ onGoCart }}">
+                <span style="background:rgba(255,255,255,.25);border-radius:8px;padding:2px 9px;font-size:13px;">{{ cartCount }}</span>
+                Fiiri dalabka · View cart
+                <span style="margin-left:auto;">{{ cartTotalStr }}</span>
+              </button>
+            </div>
+          </sc-if>
+          </sc-if>
+
+          <!-- CART -->
+          <sc-if value="{{ custCartStep }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;display:flex;flex-direction:column;">
+            <div style="display:flex;align-items:center;gap:12px;padding:18px 16px 12px;border-bottom:1px solid #EEF1F6;">
+              <button style="width:36px;height:36px;border-radius:10px;border:1px solid #E6EBF2;background:#fff;font-size:18px;cursor:pointer;" onClick="{{ onBackMenu }}">←</button>
+              <div><div style="font-weight:800;font-size:17px;">Dalabkaaga · Your order</div><div style="font-size:12px;color:#8896A8;">{{ custIcon }} {{ custTableLabel }}</div></div>
+            </div>
+            <div style="flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+              <sc-for list="{{ cartItems }}" as="c" hint-placeholder-count="2">
+                <div style="display:flex;gap:12px;align-items:center;background:#fff;border:1px solid #EEF1F6;border-radius:14px;padding:10px 12px;">
+                  <div style="flex:1;line-height:1.3;"><div style="font-weight:700;font-size:14px;">{{ c.en }}</div><div style="font-size:12px;color:#8896A8;">{{ c.lineStr }}</div></div>
+                  <div style="display:flex;align-items:center;gap:6px;"><button style="width:30px;height:30px;border-radius:8px;border:1px solid #E6EBF2;background:#fff;font-size:17px;cursor:pointer;color:#526077;" onClick="{{ c.onDec }}">−</button><span style="min-width:16px;text-align:center;font-weight:800;">{{ c.q }}</span><button style="width:30px;height:30px;border-radius:8px;border:none;background:{{ accent }};color:#fff;font-size:17px;cursor:pointer;" onClick="{{ c.onAdd }}">+</button></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px solid #EEF1F6;padding:16px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:14px;"><span style="color:#64748B;font-weight:600;">Wadarta · Total</span><span style="font-weight:800;font-size:20px;">{{ cartTotalStr }}</span></div>
+              <button style="{{ btnPrimary }};width:100%;padding:15px;border-radius:14px;font-size:15px;" onClick="{{ onPlace }}">Dir dalabka · Place order</button>
+              <div style="text-align:center;font-size:11px;color:#94A3B8;margin-top:10px;">Lacagta waxaad bixin doontaa miiska · Pay at table (online pay soon)</div>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- PLACED -->
+          <sc-if value="{{ custPlaced }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px 26px;">
+            <div style="width:84px;height:84px;border-radius:99px;background:#E7F6EE;color:#12A150;display:flex;align-items:center;justify-content:center;font-size:44px;margin-bottom:20px;animation:popIn .35s ease;">✓</div>
+            <div style="font-weight:800;font-size:22px;">Dalabka waa la diray!</div>
+            <div style="font-size:14px;color:#64748B;margin-bottom:4px;">Order sent to the kitchen</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:{{ accent }};margin-bottom:20px;">{{ loId }} · {{ loTableLabel }}</div>
+            <div style="width:100%;background:#F8FAFC;border:1px solid #EEF1F6;border-radius:14px;padding:14px 16px;text-align:left;margin-bottom:8px;">
+              <sc-for list="{{ loItems }}" as="i" hint-placeholder-count="2"><div style="font-size:13px;color:#3A465A;padding:3px 0;">{{ i.txt }}</div></sc-for>
+              <div style="border-top:1px dashed #DDE3EC;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;"><span>Total</span><span>{{ loTotalStr }}</span></div>
+            </div>
+            <div style="font-size:13px;color:#8896A8;margin:14px 0 20px;">🔔 Maqaayada ayaa la ogeysiiyay cod leh · Restaurant notified with sound</div>
+            <button style="{{ btnGhost }};width:100%;padding:13px;" onClick="{{ onReset }}">Dib ugu noqo menu-ka · Back to menu</button>
+          </div>
+          </sc-if>
+
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ TOASTS ============ -->
+  <div style="position:fixed;top:74px;right:20px;z-index:200;display:flex;flex-direction:column;gap:12px;width:340px;max-width:calc(100vw - 40px);">
+    <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+      <div style="display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #E6EBF2;border-radius:15px;padding:14px 15px;box-shadow:0 18px 40px -16px rgba(16,26,43,.35);animation:toastIn .3s cubic-bezier(.2,.8,.2,1);">
+        <div style="width:38px;height:38px;border-radius:11px;background:{{ soft12 }};color:{{ accent }};display:flex;align-items:center;justify-content:center;font-size:19px;flex:0 0 auto;animation:ringBell .8s ease;">🔔</div>
+        <div style="flex:1;min-width:0;line-height:1.35;"><div style="font-weight:800;font-size:13px;">{{ t.title }}</div><div style="font-size:13px;color:#526077;">{{ t.body }}</div></div>
+        <button style="border:none;background:transparent;color:#94A3B8;font-size:18px;cursor:pointer;line-height:1;padding:2px;" onClick="{{ t.onDismiss }}">×</button>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:860},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#2563EB&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Brand&quot;,&quot;default_options&quot;:[&quot;#2563EB&quot;,&quot;#0EA5A0&quot;,&quot;#7C3AED&quot;,&quot;#E5484D&quot;]},&quot;platformName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Miis&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Brand&quot;},&quot;soundDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'admin',
+    adminTab: 'overview',
+    restTab: 'orders',
+    custStep: 'menu',
+    custCat: 'all',
+    restCatFilter: 'all',
+    salesCat: 'all',
+    soundOn: true,
+    selectedTable: 'A12',
+    tables: ['A05','A12','B03','B07','C01','C09'],
+    newTableName: '',
+    custTable: 'A12',
+    custChannel: 'table',
+    custPhone: '',
+    phoneError: false,
+    receiptId: null,
+    cart: {},
+    lastOrder: null,
+    notif: { target: 'all', rest: 'r1', title: '', body: '' },
+    notifSent: false,
+    toasts: [],
+    restaurants: [
+      { id:'r1', name:'Beder Restaurant', owner:'Amina Yusuf', city:'Hargeisa', plan:'Pro', status:'active', orders:1284, revenue:'$4,120', hue:212 },
+      { id:'r2', name:'Xamar Grill', owner:'Kaltuun Ali', city:'Mogadishu', plan:'Basic', status:'active', orders:842, revenue:'$2,640', hue:150 },
+      { id:'r3', name:'Blue Nile Cafe', owner:'Guled Farah', city:'Djibouti', plan:'Pro', status:'active', orders:2013, revenue:'$6,980', hue:265 },
+      { id:'r4', name:'Salsabil Juice', owner:'Hodan Nur', city:'Borama', plan:'Free', status:'suspended', orders:120, revenue:'$310', hue:28 },
+      { id:'r5', name:'New Taste', owner:'Cabdi Jaamac', city:'Garowe', plan:'Basic', status:'active', orders:534, revenue:'$1,780', hue:340 },
+      { id:'r6', name:'Marina Seafood', owner:'Faysal Warsame', city:'Berbera', plan:'Pro', status:'active', orders:967, revenue:'$3,540', hue:190 },
+    ],
+    products: [
+      { id:'p1', so:'Hilib Shiilan', en:'Grilled Beef', cat:'c1', price:8.5, sold:340, status:'active', hue:18 },
+      { id:'p2', so:'Digaag Duban', en:'Roast Chicken', cat:'c1', price:7.0, sold:512, status:'active', hue:35 },
+      { id:'p3', so:'Baasto Suugo', en:'Pasta Bolognese', cat:'c2', price:6.0, sold:280, status:'active', hue:12 },
+      { id:'p4', so:'Bariis Iskukaris', en:'Somali Rice', cat:'c2', price:6.5, sold:410, status:'active', hue:45 },
+      { id:'p5', so:'Casiir Cambe', en:'Mango Juice', cat:'c3', price:2.5, sold:620, status:'active', hue:32 },
+      { id:'p6', so:'Shaah Somali', en:'Somali Tea', cat:'c3', price:1.0, sold:900, status:'active', hue:25 },
+      { id:'p7', so:'Xalwo', en:'Halwa', cat:'c4', price:3.0, sold:150, status:'inactive', hue:355 },
+      { id:'p8', so:'Muufo & Malab', en:'Muufo & Honey', cat:'c4', price:4.0, sold:95, status:'active', hue:40 },
+    ],
+    orders: [
+      { id:'#1042', channel:'table', table:'A12', phone:'063 4412200', items:[{n:'Grilled Beef',q:2,p:8.5},{n:'Mango Juice',q:2,p:2.5}], total:22.0, min:1, status:'new' },
+      { id:'#1041', channel:'table', table:'B03', phone:'063 7789112', items:[{n:'Somali Rice',q:1,p:6.5},{n:'Somali Tea',q:2,p:1.0}], total:8.5, min:6, status:'preparing' },
+      { id:'#1040', channel:'online', table:null, phone:'065 5540098', items:[{n:'Pasta Bolognese',q:1,p:6.0}], total:6.0, min:12, status:'preparing' },
+      { id:'#1039', channel:'table', table:'A05', phone:'063 2231470', items:[{n:'Roast Chicken',q:3,p:7.0}], total:21.0, min:20, status:'done' },
+    ],
+  };
+  categories = [
+    { id:'all', so:'Dhammaan', en:'All' },
+    { id:'c1', so:'Hilib', en:'Grill' },
+    { id:'c2', so:'Baasto', en:'Mains' },
+    { id:'c3', so:'Cabitaan', en:'Drinks' },
+    { id:'c4', so:'Macmacaan', en:'Dessert' },
+  ];
+  nextOrder = 1043;
+
+  get A(){ return this.props.accent || '#2563EB'; }
+  soft(p){ return 'color-mix(in srgb, '+this.A+' '+p+'%, #fff)'; }
+  catName(id){ const c=this.categories.find(x=>x.id===id); return c?c.en:''; }
+  restName(id){ const r=this.state.restaurants.find(x=>x.id===id); return r?r.name:''; }
+  chMeta(channel, table){
+    if(channel==='online') return {label:'Online', icon:'\ud83c\udf10', bg:'#F3E8FF', fg:'#8B5CF6'};
+    if(channel==='takeaway'||!table) return {label:'Takeaway', icon:'\ud83d\uded2', bg:'#F1F4F9', fg:'#526077'};
+    return {label:'Miis '+table, icon:'\ud83d\udccd', bg:this.soft(12), fg:this.A};
+  }
+
+  componentDidMount(){ if(typeof this.props.soundDefault==='boolean') this.setState({soundOn:this.props.soundDefault}); }
+  componentWillUnmount(){ (this._timers||[]).forEach(clearTimeout); }
+
+  beep(){
+    if(!this.state.soundOn) return;
+    try{
+      const AC = window.AudioContext||window.webkitAudioContext; const ctx=new AC();
+      [880,1320].forEach((f,i)=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='sine'; o.frequency.value=f; o.connect(g); g.connect(ctx.destination); const t=ctx.currentTime+i*0.16; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.22,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.15); o.start(t); o.stop(t+0.16); });
+    }catch(e){}
+  }
+  addToast(t){
+    const id='t'+(this._tid=(this._tid||0)+1);
+    this.setState(s=>({toasts:[{id,...t},...s.toasts].slice(0,4)}));
+    const to=setTimeout(()=>this.setState(s=>({toasts:s.toasts.filter(x=>x.id!==id)})),6500);
+    (this._timers=this._timers||[]).push(to);
+  }
+
+  go = (screen) => this.setState({ screen });
+  setAdminTab = (t) => this.setState({ adminTab:t });
+  setRestTab = (t) => this.setState({ restTab:t });
+  toggleSound = () => this.setState(s=>({soundOn:!s.soundOn}));
+
+  toggleStatus = (id) => this.setState(s=>({restaurants:s.restaurants.map(r=>r.id===id?{...r,status:r.status==='active'?'suspended':'active'}:r)}));
+  toggleProduct = (id) => this.setState(s=>({products:s.products.map(p=>p.id===id?{...p,status:p.status==='active'?'inactive':'active'}:p)}));
+
+  simulateOrder = () => {
+    const opts=[
+      {channel:'table', table:'B07', phone:'063 4567788', items:[{n:'Grilled Beef',q:1,p:8.5},{n:'Somali Tea',q:2,p:1.0}], total:10.5},
+      {channel:'online', table:null, phone:'065 9902341', items:[{n:'Mango Juice',q:3,p:2.5}], total:7.5},
+      {channel:'table', table:'C01', phone:'063 1120933', items:[{n:'Roast Chicken',q:2,p:7.0},{n:'Somali Rice',q:2,p:6.5}], total:27.0},
+      {channel:'takeaway', table:null, phone:'068 7781200', items:[{n:'Pasta Bolognese',q:2,p:6.0}], total:12.0},
+    ];
+    const o=opts[Math.floor(Math.random()*opts.length)];
+    const id='#'+(this.nextOrder++); const m=this.chMeta(o.channel,o.table);
+    this.setState(s=>({orders:[{id,...o,min:0,status:'new'},...s.orders]}));
+    this.beep();
+    this.addToast({title:'Dalab cusub · New order '+id, body:m.icon+' '+m.label+' · '+o.phone, kind:'order'});
+  };
+  acceptOrder = (id) => this.setState(s=>({orders:s.orders.map(o=>o.id===id?{...o,status:'preparing'}:o)}));
+  completeOrder = (id) => this.setState(s=>({orders:s.orders.map(o=>o.id===id?{...o,status:'done'}:o)}));
+
+  addToCart = (pid) => this.setState(s=>({cart:{...s.cart,[pid]:(s.cart[pid]||0)+1}}));
+  decCart = (pid) => this.setState(s=>{ const c={...s.cart}; if(!c[pid]) return {}; c[pid]--; if(c[pid]<=0) delete c[pid]; return {cart:c}; });
+  goCart = () => this.setState({custStep:'cart'});
+  backMenu = () => this.setState({custStep:'menu'});
+  resetCust = () => this.setState({custStep:'menu', cart:{}, lastOrder:null, custPhone:'', phoneError:false});
+  setCustPhone = (e) => this.setState({custPhone:e.target.value, phoneError:false});
+  openReceipt = (id) => this.setState({receiptId:id});
+  closeReceipt = () => this.setState({receiptId:null});
+  printReceipt = () => { try{ window.print(); }catch(e){} };
+  toggleCustTable = () => this.setState(s=>{ const seq=['table','takeaway','online']; const next=seq[(seq.indexOf(s.custChannel)+1)%seq.length]; return {custChannel:next, custTable:next==='table'?(s.custTable||'A12'):s.custTable}; });
+  addTable = () => { const n=(this.state.newTableName||'').trim().toUpperCase(); if(!n) return; this.setState(s=> s.tables.includes(n) ? {newTableName:''} : {tables:[...s.tables,n], selectedTable:n, newTableName:''}); };
+  cartTotal(){ return Object.entries(this.state.cart).reduce((a,[pid,q])=>{ const p=this.state.products.find(x=>x.id===pid); return a+(p?p.price*q:0); },0); }
+  placeOrder = () => {
+    const phone=(this.state.custPhone||'').trim();
+    if(!phone){ this.setState({phoneError:true}); return; }
+    const items=Object.entries(this.state.cart).map(([pid,q])=>{ const p=this.state.products.find(x=>x.id===pid); return {n:p.en,q,p:p.price}; });
+    if(!items.length) return;
+    const total=this.cartTotal(); const id='#'+(this.nextOrder++); const channel=this.state.custChannel; const table=channel==='table'?this.state.custTable:null; const m=this.chMeta(channel,table);
+    this.setState(s=>({orders:[{id,items,total,min:0,status:'new',channel,table,phone},...s.orders], custStep:'placed', lastOrder:{id,items,total,channel,table,phone}}));
+    this.beep();
+    this.addToast({title:'Dalab cusub · New order '+id, body:m.icon+' '+m.label+' · '+phone, kind:'order'});
+  };
+
+  updNotif = (k) => (e) => this.setState(s=>({notif:{...s.notif,[k]:e.target.value}}));
+  setNotifTarget = (t) => this.setState(s=>({notif:{...s.notif,target:t}}));
+  sendNotif = () => {
+    const n=this.state.notif; if(!n.title.trim()) return;
+    this.setState({notifSent:true});
+    this.addToast({title:'Fariin la diray · Sent', body:n.target==='all'?'Dhammaan maqaayadaha · All restaurants':this.restName(n.rest), kind:'notif'});
+    const to=setTimeout(()=>this.setState({notifSent:false, notif:{...this.state.notif,title:'',body:''}}),1800);
+    (this._timers=this._timers||[]).push(to);
+  };
+  dismissToast = (id) => this.setState(s=>({toasts:s.toasts.filter(x=>x.id!==id)}));
+
+  navStyle(active){ return {display:'flex',alignItems:'center',gap:'12px',padding:'11px 14px',borderRadius:'10px',cursor:'pointer',fontSize:'14px',fontWeight:active?'700':'600',color:active?this.A:'#64748B',background:active?this.soft(10):'transparent',border:'none',width:'100%',textAlign:'left',fontFamily:'inherit',transition:'all .15s'}; }
+  swStyle(active){ return {padding:'8px 15px',borderRadius:'99px',border:'1px solid '+(active?this.A:'#E2E8F2'),background:active?this.A:'#fff',color:active?'#fff':'#526077',fontSize:'13px',fontWeight:'700',cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',transition:'all .15s'}; }
+  chipStyle(active){ return {padding:'8px 16px',borderRadius:'99px',border:'1px solid '+(active?this.A:'#E2E8F2'),background:active?this.A:'#fff',color:active?'#fff':'#526077',fontWeight:'700',fontSize:'13px',cursor:'pointer',whiteSpace:'nowrap',flex:'0 0 auto',fontFamily:'inherit'}; }
+  segStyle(active){ return {flex:'1',padding:'10px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:active?this.A:'transparent',color:active?'#fff':'#64748B',fontFamily:'inherit'}; }
+  imgStyle(hue){ return {background:'repeating-linear-gradient(135deg, hsl('+hue+' 45% 91%) 0 9px, hsl('+hue+' 45% 87%) 9px 18px)'}; }
+
+  qrEl(seed,cell){
+    const size=21; let h=2166136261;
+    for(let i=0;i<seed.length;i++){ h^=seed.charCodeAt(i); h=Math.imul(h,16777619); }
+    const rnd=()=>{ h+=0x6D2B79F5; let t=h; t=Math.imul(t^(t>>>15),1|t); t^=t+Math.imul(t^(t>>>7),61|t); return ((t^(t>>>14))>>>0)/4294967296; };
+    const on=[]; for(let y=0;y<size;y++){ on[y]=[]; for(let x=0;x<size;x++) on[y][x]=rnd()>0.52; }
+    const fp=(ox,oy)=>{ for(let y=0;y<7;y++)for(let x=0;x<7;x++){ on[oy+y][ox+x]=(x===0||x===6||y===0||y===6)||(x>=2&&x<=4&&y>=2&&y<=4); }
+      for(let y=-1;y<8;y++)for(let x=-1;x<8;x++){ const yy=oy+y,xx=ox+x; if(yy>=0&&yy<size&&xx>=0&&xx<size&&(y<0||y>6||x<0||x>6)) on[yy][xx]=false; } };
+    fp(0,0); fp(14,0); fp(0,14);
+    const cells=[];
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){ cells.push(React.createElement('div',{key:y+'-'+x,style:{width:cell,height:cell,background:on[y][x]?'#0E1A2B':'transparent'}})); }
+    return React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat('+size+','+cell+'px)',padding:cell*2,background:'#fff'}},cells);
+  }
+
+  renderVals(){
+    const s=this.state, A=this.A;
+    const btnPrimary={display:'inline-flex',alignItems:'center',justifyContent:'center',gap:'8px',padding:'11px 18px',borderRadius:'10px',border:'none',background:A,color:'#fff',fontSize:'14px',fontWeight:'700',cursor:'pointer',fontFamily:'inherit'};
+    const btnPrimarySm={...btnPrimary,padding:'9px 14px',fontSize:'13px'};
+    const btnGhost={...btnPrimary,background:'#fff',color:A,border:'1px solid '+this.soft(35)};
+    const btnGhostSm={...btnGhost,padding:'9px 14px',fontSize:'13px'};
+    const viewBtn={display:'inline-flex',alignItems:'center',gap:'5px',padding:'7px 12px',borderRadius:'8px',border:'1px solid '+this.soft(35),background:'#fff',color:A,fontSize:'12px',fontWeight:'700',cursor:'pointer',fontFamily:'inherit'};
+
+    const topSwitch=[['admin','Admin Guud'],['login','Maqaayad · Login'],['restaurant','Maqaayad Dashboard'],['customer','Macmiil · QR']].map(([id,label])=>({id,label,style:this.swStyle(s.screen===id),onClick:()=>this.go(id)}));
+    const adminNav=[['overview','Guudmar','Overview','\u25a4'],['restaurants','Maqaayadaha','Restaurants','\u2302'],['notifications','Fariimaha','Notifications','\u25c9'],['billing','Lacagta','Billing','\u25b8']].map(([id,so,en,ic])=>({id,so,en,ic,style:this.navStyle(s.adminTab===id),onClick:()=>this.setAdminTab(id)}));
+    const restNav=[['orders','Dalabyada','Orders','\u25a4'],['products','Cuntooyinka','Products','\u25c8'],['categories','Qaybaha','Categories','\u2261'],['sales','Iibka','Sales','\u2197'],['qr','QR Codes','QR Codes','\u25a6']].map(([id,so,en,ic])=>({id,so,en,ic,style:this.navStyle(s.restTab===id),onClick:()=>this.setRestTab(id)}));
+
+    const activeRest=s.restaurants.filter(r=>r.status==='active').length;
+    const stats=[
+      {so:'Maqaayado',en:'Restaurants',val:String(s.restaurants.length),sub:activeRest+' active',tone:A},
+      {so:'Dalabyada maanta',en:'Orders today',val:'3,461',sub:'\u2191 12% vs last week',tone:'#12A150'},
+      {so:'Dakhliga (30d)',en:'Revenue',val:'$19,370',sub:'Payments \u2014 soon',tone:'#8B5CF6'},
+      {so:'Users firfircoon',en:'Active staff',val:'48',sub:'across all venues',tone:'#E8A317'},
+    ];
+    const cmax=Math.max(...s.restaurants.map(r=>r.orders));
+    const chartRows=[...s.restaurants].sort((a,b)=>b.orders-a.orders).map(r=>({name:r.name,ordStr:r.orders.toLocaleString(),barW:(r.orders/cmax*100).toFixed(0)+'%',fg:'hsl('+r.hue+' 60% 52%)'}));
+    const activity=[
+      {t:'Marina Seafood joined',d:'Pro plan · 2h ago',dot:'#12A150'},
+      {t:'Blue Nile Cafe hit 2,000 orders',d:'Milestone · 5h ago',dot:A},
+      {t:'Salsabil Juice suspended',d:'Payment overdue · 1d ago',dot:'#E5484D'},
+      {t:'New Taste added 6 products',d:'Menu update · 1d ago',dot:'#8B5CF6'},
+    ];
+    const restaurants=s.restaurants.map(r=>({...r, suspended:r.status==='suspended', statusLabel:r.status==='active'?'Active':'Suspended', actionLabel:r.status==='active'?'Suspend':'Activate', initials:r.name.split(' ').map(w=>w[0]).slice(0,2).join(''), avBg:'hsl('+r.hue+' 65% 95%)', avFg:'hsl('+r.hue+' 55% 42%)', ordStr:r.orders.toLocaleString(), onToggle:()=>this.toggleStatus(r.id), statusStyle:{display:'inline-flex',alignItems:'center',gap:'6px',padding:'4px 10px',borderRadius:'99px',fontSize:'12px',fontWeight:'700',background:r.status==='active'?'#E7F6EE':'#FDECEC',color:r.status==='active'?'#12A150':'#E5484D'}, actionStyle:{padding:'7px 12px',borderRadius:'8px',border:'1px solid '+(r.status==='active'?'#F0C6C6':this.soft(35)),background:'#fff',color:r.status==='active'?'#E5484D':A,fontSize:'12px',fontWeight:'700',cursor:'pointer',fontFamily:'inherit'}}));
+
+    const orders=s.orders.map(o=>{ const m=this.chMeta(o.channel,o.table); const bs={display:'inline-flex',alignItems:'center',gap:'5px',background:m.bg,color:m.fg,fontSize:'12px',fontWeight:'800',padding:'4px 10px',borderRadius:'8px'}; return {...o, totalStr:'$'+o.total.toFixed(2), chLabel:m.label, chIcon:m.icon, badgeStyle:{...bs,marginBottom:'10px'}, badgeStyleFlat:bs, qtyCount:o.items.reduce((a,b)=>a+b.q,0), itemsText:o.items.map(i=>i.q+'\u00d7 '+i.n).join('  ·  '), when:o.min===0?'Hadda · now':(o.min+'m ago'), onAccept:()=>this.acceptOrder(o.id), onComplete:()=>this.completeOrder(o.id), onView:()=>this.openReceipt(o.id)}; });
+    const newO=orders.filter(o=>o.status==='new'), prepO=orders.filter(o=>o.status==='preparing'), doneO=orders.filter(o=>o.status==='done');
+
+    const restCatTabs=this.categories.map(c=>({...c, style:this.chipStyle(s.restCatFilter===c.id), onClick:()=>this.setState({restCatFilter:c.id})}));
+    const restProducts=s.products.filter(p=>s.restCatFilter==='all'||p.cat===s.restCatFilter).map(p=>({...p, priceStr:'$'+p.price.toFixed(2), soldStr:p.sold+' sold', catLabel:this.catName(p.cat), active:p.status==='active', statusLabel:p.status==='active'?'Live':'Hidden', img:this.imgStyle(p.hue), onToggle:()=>this.toggleProduct(p.id), pill:{padding:'3px 9px',borderRadius:'99px',fontSize:'11px',fontWeight:'700',background:p.status==='active'?'#E7F6EE':'#EEF1F6',color:p.status==='active'?'#12A150':'#8896A8',cursor:'pointer'}}));
+
+    const catList=this.categories.filter(c=>c.id!=='all').map(c=>({...c, count:s.products.filter(p=>p.cat===c.id).length+' items'}));
+
+    const salesRows=s.products.map(p=>({...p,rev:p.price*p.sold})).filter(p=>s.salesCat==='all'||p.cat===s.salesCat).map(p=>({...p, priceStr:'$'+p.price.toFixed(2), soldStr:String(p.sold), revStr:'$'+p.rev.toFixed(2), catLabel:this.catName(p.cat)}));
+    const totRev=salesRows.reduce((a,b)=>a+b.rev,0), totSold=salesRows.reduce((a,b)=>a+b.sold,0);
+
+    const tblStyle=(active)=>({display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderRadius:'10px',border:'1px solid '+(active?A:'#E6EBF2'),background:active?this.soft(8):'#fff',cursor:'pointer',fontWeight:'700',fontSize:'14px',color:active?A:'#0E1A2B',fontFamily:'inherit',width:'100%',textAlign:'left'});
+    const tablesList=s.tables.map(t=>({t, active:s.selectedTable===t, onSelect:()=>this.setState({selectedTable:t}), style:tblStyle(s.selectedTable===t)}));
+    const specialList=[['__online','Online','Dadka online ka dalbada','\ud83c\udf10'],['__takeaway','Takeaway','Miis la\u02bcaan','\ud83d\uded2']].map(([key,label,sub,icon])=>({key,label,sub,icon,active:s.selectedTable===key,onSelect:()=>this.setState({selectedTable:key}),style:tblStyle(s.selectedTable===key)}));
+
+    const catTabs=this.categories.map(c=>({...c, style:this.chipStyle(s.custCat===c.id), onClick:()=>this.setState({custCat:c.id})}));
+    const custProducts=s.products.filter(p=>p.status==='active'&&(s.custCat==='all'||p.cat===s.custCat)).map(p=>({...p, priceStr:'$'+p.price.toFixed(2), qty:s.cart[p.id]||0, inCart:!!s.cart[p.id], notInCart:!s.cart[p.id], img:this.imgStyle(p.hue), onAdd:()=>this.addToCart(p.id), onDec:()=>this.decCart(p.id)}));
+    const cartItems=Object.entries(s.cart).map(([pid,q])=>{ const p=s.products.find(x=>x.id===pid); return {...p,q,lineStr:'$'+(p.price*q).toFixed(2), onAdd:()=>this.addToCart(pid), onDec:()=>this.decCart(pid)}; });
+    const cartCount=cartItems.reduce((a,b)=>a+b.q,0);
+    const cartTotal=this.cartTotal();
+    const lo=s.lastOrder;
+    const cm=this.chMeta(s.custChannel,s.custTable);
+    const selK=s.selectedTable, selOnline=selK==='__online', selTk=selK==='__takeaway';
+    const selLabel=selOnline?'Online ordering · Dadka online':selTk?'Takeaway · Miis la\u02bcaan':('Miis '+selK+' · Table '+selK);
+    const selCode=selOnline?'ONLINE':selTk?'TAKEAWAY':('BEDER-'+selK);
+    const rOrd = s.receiptId ? orders.find(o=>o.id===s.receiptId) : null;
+    const receiptLines = rOrd ? rOrd.items.map(i=>({q:i.q, n:i.n, lineStr:'$'+((i.p||0)*i.q).toFixed(2)})) : [];
+    const receiptDateStr = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+    return {
+      accent:A, platformName:this.props.platformName||'Miis', btnPrimary, btnPrimarySm, btnGhost, btnGhostSm,
+      soft8:this.soft(8), soft12:this.soft(12), soft35:this.soft(35),
+      topSwitch,
+      isAdmin:s.screen==='admin', isLogin:s.screen==='login', isRest:s.screen==='restaurant', isCust:s.screen==='customer',
+      adminNav, aOverview:s.adminTab==='overview', aRest:s.adminTab==='restaurants', aNotif:s.adminTab==='notifications', aBilling:s.adminTab==='billing',
+      restNav, rOrders:s.restTab==='orders', rProducts:s.restTab==='products', rCats:s.restTab==='categories', rSales:s.restTab==='sales', rQr:s.restTab==='qr',
+      stats, chartRows, activity, restaurants,
+      newO, prepO, doneO, newCount:newO.length, prepCount:prepO.length, doneCount:doneO.length,
+      restCatTabs, restProducts,
+      catList,
+      salesRows, salesCat:s.salesCat, onSalesCat:(e)=>this.setState({salesCat:e.target.value}), totRevStr:'$'+totRev.toFixed(2), totSoldStr:String(totSold),
+      salesCatOpts:this.categories,
+      tablesList, specialList, newTableName:s.newTableName, onNewTable:(e)=>this.setState({newTableName:e.target.value}), onAddTable:this.addTable, selectedTableLabel:selLabel, selectedTableCode:selCode, qrBig:this.qrEl(selCode,6),
+      soundOn:s.soundOn?'On \u00b7 Furan':'Off \u00b7 Xiran', onSound:this.toggleSound, onSimulate:this.simulateOrder, onLogin:()=>this.go('restaurant'),
+      catTabs, custProducts, cartItems, cartCount, cartHasItems:cartCount>0, cartTotalStr:'$'+cartTotal.toFixed(2),
+      custPhone:s.custPhone, phoneError:s.phoneError, onCustPhone:this.setCustPhone, phoneInputStyle:{width:'100%',padding:'12px 14px',border:'1px solid '+(s.phoneError?'#E5484D':'#DDE3EC'),borderRadius:'11px',fontSize:'14px',fontFamily:'inherit'},
+      viewBtn, ordersAll:orders,
+      receiptOpen:!!rOrd, rId:rOrd?rOrd.id:'', rPhone:rOrd?rOrd.phone:'', rChLabel:rOrd?rOrd.chLabel:'', rChIcon:rOrd?rOrd.chIcon:'', rTotalStr:rOrd?rOrd.totalStr:'', receiptLines, receiptDateStr, onCloseReceipt:this.closeReceipt, onPrintReceipt:this.printReceipt, stopProp:(e)=>e.stopPropagation(),
+      custMenu:s.custStep==='menu', custCartStep:s.custStep==='cart', custPlaced:s.custStep==='placed',
+      custChannel:s.custChannel, custTableLabel:cm.label, custIcon:cm.icon, custTableSub:s.custChannel==='online'?'Online order · online':s.custChannel==='takeaway'?'Miis la\u02bcaan':'Isku dalbo · self order', onToggleTable:this.toggleCustTable,
+      onGoCart:this.goCart, onBackMenu:this.backMenu, onPlace:this.placeOrder, onReset:this.resetCust,
+      loId:lo?lo.id:'', loTotalStr:lo?('$'+lo.total.toFixed(2)):'', loTableLabel:lo?(this.chMeta(lo.channel,lo.table).icon+' '+this.chMeta(lo.channel,lo.table).label):'', loItems:lo?lo.items.map(i=>({txt:i.q+'\u00d7 '+i.n})):[],
+      qrCust:this.qrEl('BEDER-'+(s.custTable||'TAKEAWAY'),4),
+      notifTarget:s.notif.target, notifTitle:s.notif.title, notifBody:s.notif.body, notifRest:s.notif.rest,
+      onNotifTitle:this.updNotif('title'), onNotifBody:this.updNotif('body'), onNotifRest:this.updNotif('rest'),
+      setTargetAll:()=>this.setNotifTarget('all'), setTargetOne:()=>this.setNotifTarget('single'),
+      targetAllStyle:this.segStyle(s.notif.target==='all'), targetOneStyle:this.segStyle(s.notif.target==='single'),
+      isTargetOne:s.notif.target==='single',
+      notifPreviewTitle:s.notif.title||'Cinwaanka fariinta · Message title', notifPreviewBody:s.notif.body||'Qoraalkaaga halkan ayuu ka muuqan doonaa. Your message preview appears here.',
+      notifTargetLabel:s.notif.target==='all'?'Dhammaan · All restaurants':this.restName(s.notif.rest),
+      onSend:this.sendNotif, notifSent:s.notifSent, sendLabel:s.notifSent?'La diray \u2713 · Sent':'Dir fariinta · Send notification',
+      toasts:s.toasts.map(t=>({...t,onDismiss:()=>this.dismissToast(t.id)})),
+    };
+  }
+}
+</script>
+<script>
+(async () => {
+  if (!document.title || !document.title.trim()) document.title = "Miis Platform";
+  // Prepend so page-supplied @page / break rules (deck-stage's margin:0,
+  // author CSS) keep source-order precedence over the baseline.
+  const baseCss = document.createElement('style');
+  baseCss.textContent = "@media print {\n  figure, table { break-inside: avoid; }\n  *, *::before, *::after {\n    print-color-adjust: exact; -webkit-print-color-adjust: exact;\n    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;\n    animation-delay: -99s !important; animation-duration: .001s !important;\n    animation-iteration-count: 1 !important; animation-fill-mode: both !important;\n    animation-play-state: running !important; transition-duration: 0s !important;\n  }\n}";
+  document.head.prepend(baseCss);
+  if (document.readyState === 'loading') {
+    await new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true }));
+  }
+  let ds = document.querySelector('deck-stage');
+  // whenDefined never resolves when nothing registers the element, so only
+  // await it when a <deck-stage> tag exists (and race a timeout regardless).
+  if (ds && !customElements.get('deck-stage')) {
+    try {
+      await Promise.race([
+        customElements.whenDefined('deck-stage'),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    } catch (e) {}
+    ds = document.querySelector('deck-stage');
+  }
+  // dc-runtime assigns window.DCLogic at init and mounts into #dc-root on
+  // DOMContentLoaded; settle on that subtree so React has rendered before
+  // print(). Non-DC pages fall through to weighing body.
+  const isDc = !ds && 'DCLogic' in window;
+  const settleRoot = ds || (isDc ? document.getElementById('dc-root') : null) || document.body;
+  if (settleRoot) {
+    // Weigh only content children — skip script/style/template so inline
+    // Babel/CSS doesn't register as stable "content" before the framework
+    // has mounted anything.
+    const MEDIA = 'img,svg,canvas,video,picture,iframe,embed,object';
+    const weigh = () => {
+      let text = 0, media = 0;
+      for (const c of settleRoot.children) {
+        const t = c.tagName;
+        if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEMPLATE') continue;
+        text += (c.textContent || '').trim().length;
+        media += c.querySelectorAll(MEDIA).length + (c.matches(MEDIA) ? 1 : 0);
+      }
+      return text + media * 100;
+    };
+    // "Non-zero and stable" alone is not sufficient to mean rendered: generic
+    // body can carry a static shell while async main content is pending, and
+    // #dc-root can carry the root DC's static text while child refs are still
+    // .sc-placeholder boxes. Gate generic on readyState 'complete', and never
+    // accept stability while a dc-runtime placeholder is present.
+    const isGeneric = settleRoot === document.body;
+    const deadline = Date.now() + 15000;
+    let last = -1, stable = 0;
+    while (Date.now() < deadline) {
+      const n = weigh();
+      const ready =
+        (!isGeneric || document.readyState === 'complete') &&
+        !settleRoot.querySelector('.sc-placeholder');
+      if (n > 0 && n === last && ready) { if (++stable >= 2) break; } else { stable = 0; }
+      last = n;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  // Project support.js may predate runtime default-seeding; push via bridge.
+  if (isDc && window.__dcSetProps && window.__dcRootName) {
+    try {
+      const dpEl = document.querySelector('script[data-dc-script]');
+      const meta = JSON.parse((dpEl && dpEl.getAttribute('data-props')) || '{}');
+      const bag = {};
+      for (const k in meta)
+        if (k[0] !== '$' && meta[k] && meta[k].default !== undefined)
+          bag[k] = meta[k].default;
+      if (Object.keys(bag).length) {
+        window.__dcSetProps(window.__dcRootName(), bag);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    } catch (e) {}
+  }
+  // Reveal content gated on scroll or visibility before printing. Lazy <img>,
+  // IntersectionObserver fade-ins, and collapsed <details> don't render while
+  // off-screen, so a long page would print with them blank or closed. Open
+  // every <details>, force native-lazy images eager, and scroll the document
+  // through its full height to trip lazy-load + IO; then wait (bounded) for the
+  // newly-triggered images. Inert for deck-stage (slides aren't scroll-gated).
+  try {
+    for (const d of document.querySelectorAll('details')) d.open = true;
+    for (const img of document.querySelectorAll('img[loading="lazy"]'))
+      img.loading = 'eager';
+    const scroller = document.scrollingElement || document.documentElement;
+    const full = Math.max(scroller.scrollHeight, document.body.scrollHeight);
+    const step = window.innerHeight || 800;
+    for (let y = 0; y <= full; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    window.scrollTo(0, 0);
+    await Promise.race([
+      Promise.all(
+        [...document.images].map((img) =>
+          img.complete
+            ? null
+            : new Promise((res) => {
+                img.addEventListener('load', res, { once: true });
+                img.addEventListener('error', res, { once: true });
+              })
+        )
+      ),
+      new Promise((r) => setTimeout(r, 4000)),
+    ]);
+  } catch (e) {}
+  try { await document.fonts.ready; } catch (e) {}
+  // Jump every animation to its end state so print() never captures a slide
+  // mid-entrance. Ordering matters: the 0s-transition style must be live
+  // BEFORE data-deck-active is set so attribute-keyed transitions don't
+  // start a (now-0s) run from the pre-active base.
+  const st = document.createElement('style');
+  st.textContent = '*,*::before,*::after{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}';
+  document.head.appendChild(st);
+  for (const d of document.querySelectorAll('deck-stage')) {
+    for (const c of d.children) {
+      const t = c.tagName;
+      if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEMPLATE') continue;
+      c.setAttribute('data-deck-active', '');
+    }
+  }
+  // Re-append deck-stage's @page last so no author @page can add a margin and
+  // spill each full-bleed slide onto two sheets. Backstop for old copies.
+  if (ds) {
+    let pg = document.getElementById('deck-stage-print-page');
+    if (!pg) {
+      pg = document.createElement('style');
+      pg.textContent = '@page{size:' + (+ds.getAttribute('width') || 1920) +
+        'px ' + (+ds.getAttribute('height') || 1080) + 'px;margin:0}';
+    }
+    document.body.appendChild(pg);
+  }
+  try {
+    const sweep = () => {
+      for (const a of document.getAnimations()) {
+        try { a.finish(); } catch (e) {
+          try { a.currentTime = (a.effect && a.effect.getComputedTiming().duration) || 0; a.pause(); } catch (e2) {}
+        }
+      }
+    };
+    sweep();
+    await new Promise((r) => requestAnimationFrame(r));
+    sweep();
+    await new Promise((r) => requestAnimationFrame(r));
+  } catch (e) {}
+  // Size the PDF page to the rendered design unless the file opted into
+  // standard paper via @page{size:letter|A4|…}. Decks own their own @page.
+  // Wrappers (body, …) lose padding+margin so the frame sits at (0,0); the
+  // frame itself loses only margin — its padding is INSIDE the measured
+  // rect and must stay, or content shifts and leaves a gap at bottom/right.
+  var __m = null;
+  try { __m = (() => {
+  var STAMP = true;
+  var docEl = document.documentElement;
+  var doc = { width: docEl.scrollWidth, height: docEl.scrollHeight };
+
+  var ds = document.querySelector('deck-stage');
+  if (ds) {
+    var dw = Number(ds.getAttribute('width')) || 1920;
+    var dh = Number(ds.getAttribute('height')) || 1080;
+    var n = typeof ds.length === 'number' ? ds.length : ds.children.length;
+    var idx = typeof ds.index === 'number' ? ds.index : 0;
+    var frames = [];
+    for (var i = 0; i < n; i++) frames.push({ left: 0, top: 0, width: dw, height: dh });
+    return { kind: 'deck', source: 'declared', doc: doc, frames: frames,
+      authored: frames.map(function(){return{width:true,height:true}}),
+      deck: { width: dw, height: dh, slideCount: n, index: idx },
+      signals: { paperPage: false, pxPage: false } };
+  }
+
+  // Declared kind: a doc-page tag names the kind outright, so no signal
+  // heuristics run (like the deck branch above, signals report false —
+  // they describe inferred classifications only). The tag alone is not
+  // trusted: the element must have upgraded (shadowRoot present), so a
+  // leftover tag whose script was deleted falls through to the heuristics
+  // that handle plain markup.
+  var stageSx = window.scrollX || 0, stageSy = window.scrollY || 0;
+  var dp = document.querySelector('doc-page');
+  if (dp && dp.shadowRoot) {
+    // Crop to the sheet, not the host — the desk around it is screen-only
+    // chrome that must not land in PNG exports.
+    var sheet = dp.shadowRoot.querySelector('.sheet');
+    var sr = (sheet || dp).getBoundingClientRect();
+    return { kind: 'paper-doc', source: 'declared', doc: doc,
+      frames: [{ left: sr.left + stageSx, top: sr.top + stageSy,
+        width: sr.width, height: sr.height }],
+      authored: [{ width: false, height: false }],
+      signals: { paperPage: false, pxPage: false } };
+  }
+  var paperPage = false, pxPage = false;
+  var eachRule = function (fn) {
+    for (var s = 0; s < document.styleSheets.length; s++) {
+      var rs; try { rs = document.styleSheets[s].cssRules; } catch (e) { continue; }
+      for (var r = 0; r < rs.length; r++) {
+        fn(rs[r]);
+        if (rs[r].cssRules) for (var n = 0; n < rs[r].cssRules.length; n++) fn(rs[r].cssRules[n]);
+      }
+    }
+  };
+  eachRule(function (r) {
+    if (r.type !== 6) return;
+    var m = /\bsize\s*:\s*([^;}]+)/i.exec(r.cssText || '');
+    if (!m) return;
+    if (/\b(letter|a[3-5]|legal|ledger)\b/i.test(m[1])) paperPage = true;
+    if (/\d+(?:\.\d+)?px\b/i.test(m[1])) pxPage = true;
+  });
+  var signals = { paperPage: paperPage, pxPage: pxPage };
+
+  var pxVal = function (v) {
+    var m = /^(\d+(?:\.\d+)?)px$/.exec(v || ''); return m ? +m[1] : 0;
+  };
+  var authoredPx = function (el, prop) {
+    if (pxVal(el.style[prop])) return true;
+    var attr = el.getAttribute(prop);
+    if (attr && /^\d+$/.test(attr)) return true;
+    var hit = false;
+    eachRule(function (r) {
+      if (hit || r.type !== 1 || !r.style) return;
+      try { if (el.matches(r.selectorText) && pxVal(r.style[prop])) hit = true; } catch (e) {}
+    });
+    return hit;
+  };
+
+  var el = document.body, rootPxW = false;
+  for (;;) {
+    var kids = [];
+    for (var c = 0; c < el.children.length; c++) {
+      var t = el.children[c].tagName;
+      if (t !== 'SCRIPT' && t !== 'STYLE' && t !== 'TEMPLATE') kids.push(el.children[c]);
+    }
+    if (kids.length !== 1 || !(kids[0] instanceof HTMLElement)) break;
+    if (STAMP) el.setAttribute('data-om-frame-wrap', '');
+    el = kids[0];
+    rootPxW = authoredPx(el, 'width');
+    if (rootPxW) break;
+  }
+  if (!rootPxW) rootPxW = authoredPx(el, 'width');
+
+  // @page{size:letter} alone is a flowing doc; with a px-width root it's a
+  // fixed sheet pretending to be paper — fall through and size to render.
+  if (paperPage && !rootPxW) {
+    return { kind: 'paper-doc', source: 'inferred', doc: doc, signals: signals,
+      frames: [{ left: 0, top: 0, width: doc.width, height: doc.height }],
+      authored: [{ width: false, height: false }] };
+  }
+
+  var sx = window.scrollX || 0, sy = window.scrollY || 0;
+  var rectOf = function (e) {
+    var r = e.getBoundingClientRect();
+    var oy; try { oy = getComputedStyle(e).overflowY; } catch (err) {}
+    var h = oy === 'visible' ? Math.max(r.height, e.scrollHeight || 0) : r.height;
+    return { left: r.left + sx, top: r.top + sy, width: r.width, height: h };
+  };
+
+  // Multi-frame: off unless the page opts in via data-om-multi-frame on the
+  // stop element — the explicit opt-in is what guards against card grids
+  // and pricing tables that match the geometry but aren't separate
+  // canvases. Two ways to name the frames, explicit first:
+  // 1. Descendants marked data-om-frame-export (the social-frames starter
+  //    marks each asset frame; shells/panels around them are presentation,
+  //    so nesting is expected). Document order.
+  // 2. Fallback, no marked descendants: direct children with an authored px
+  //    width AND height (the original geometry heuristic).
+  // Frames may be different sizes (a gallery mixes 1080×1920 stories with
+  // 728×90 banners); data-om-frame-label rides along for export filenames.
+  if (el.hasAttribute('data-om-multi-frame')) {
+    var visOk = function (e) {
+      var cs; try { cs = getComputedStyle(e); } catch (err) { return false; }
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.position !== 'fixed';
+    };
+    // A frame's crop is its VISUAL box — never the scrollHeight-inflated
+    // rect that rectOf computes for page roots. Shadow-DOM hover controls
+    // (image-slot's Replace bar parks 29px below its host) and similar
+    // escaping UI contribute scrollable overflow to the frame, and the
+    // inflated height both squashes the nominal-size resize and drags
+    // content below the frame into the crop. Zoom-independent; bit every
+    // slot-bearing frame.
+    var frameRectOf = function (e) {
+      var r = e.getBoundingClientRect();
+      return { left: r.left + sx, top: r.top + sy, width: r.width, height: r.height };
+    };
+    var pushCand = function (list, e) {
+      if (!visOk(e)) return;
+      var rc = frameRectOf(e);
+      if (rc.width < 2 || rc.height < 2) return;
+      var lbl = e.getAttribute('data-om-frame-label');
+      if (lbl) rc.label = lbl;
+      list.push(rc);
+    };
+    var cands = [];
+    var marked = el.querySelectorAll('[data-om-frame-export]');
+    if (marked.length) {
+      for (var mk = 0; mk < marked.length; mk++) pushCand(cands, marked[mk]);
+    } else {
+      for (var k = 0; k < el.children.length; k++) {
+        var ch = el.children[k];
+        if (!authoredPx(ch, 'width') || !authoredPx(ch, 'height')) continue;
+        pushCand(cands, ch);
+      }
+    }
+    if (cands.length >= 2) {
+      return { kind: 'multi-frame', source: 'inferred', doc: doc, signals: signals,
+        frames: cands, authored: cands.map(function(){return{width:true,height:true}}) };
+    }
+  }
+
+  if (STAMP) el.setAttribute('data-om-frame', '');
+  return { kind: 'single-canvas', source: 'inferred', doc: doc, signals: signals,
+    frames: [rectOf(el)],
+    authored: [{ width: rootPxW, height: authoredPx(el, 'height') }] };
+})(); } catch (e) {}
+  var frame = null;
+  if (__m && __m.kind === 'single-canvas') {
+    var f = __m.frames && __m.frames[0];
+    if (f && f.width >= 200 && f.height >= 200) {
+      frame = f;
+      var fst = document.createElement('style');
+      fst.textContent = '@media print{@page{size:' + Math.ceil(f.width) + 'px ' +
+        Math.ceil(f.height) + 'px;margin:0}' +
+        'html,body,[data-om-frame-wrap]{padding:0!important;margin:0!important;background:none!important}' +
+        '[data-om-frame]{margin:0!important}}';
+      document.body.appendChild(fst);
+    }
+  }
+  // Relax break-inside on oversized elements. An element taller than a
+  // printable page can't honor break-inside: avoid — browsers either overflow
+  // it or push it whole to the next page, leaving a blank gap, then break it
+  // anyway at an arbitrary point. After the final layout (content revealed,
+  // animations jumped), find elements taller than a page that still compute
+  // break-inside: avoid and reset them to auto, so the browser breaks them at
+  // their children's boundaries instead (children keep their own avoid). PAGE_PX
+  // is a conservative portrait estimate at 96 CSS px/in — Letter/A4 usable
+  // height minus our 0.5in margins — so only clearly-oversized elements are
+  // touched and under-page elements still stay whole. Skipped for decks (slides
+  // are sized to the page) and for fixed-size canvases (frame set, or an author
+  // px-based @page) — runs as before for flowing docs on letter/A4.
+  try {
+    if (!ds && !frame && !(__m && __m.signals && __m.signals.pxPage)) {
+      const PAGE_PX = 1024;
+      // Our print defaults add a real @page margin only when the source has
+      // no @page of its own; computed style can't tell us (it reports screen
+      // media), so read the injected rule directly.
+      const defaults = document.querySelector('style[data-omelette-print-defaults]');
+      const pageInset = /@page\s*\{[^}]*margin/.test(defaults ? defaults.textContent || '' : '');
+      const SEL = 'section,article,figure,table,pre,blockquote,[class~="card" i],[class~="page" i],[class~="sheet" i]';
+      for (const el of document.body.querySelectorAll(SEL)) {
+        if (el instanceof HTMLElement && el.offsetHeight > PAGE_PX) {
+          el.setAttribute('data-om-oversized', '');
+          // Fake-paged docs simulate sheets with over-tall break-after:page
+          // boxes; honoring the break spills half-blank pages and ends a
+          // colored box mid-sheet. Flow them, and (only when we own the page
+          // inset) drop the redundant padding/background via the rule below.
+          const cs = getComputedStyle(el);
+          if (cs.breakAfter === 'page' || cs.pageBreakAfter === 'always') {
+            el.setAttribute('data-om-fakepage', '');
+          }
+        }
+      }
+      const ost = document.createElement('style');
+      ost.textContent = '@media print{' +
+        '[data-om-oversized]{break-inside:auto !important;page-break-inside:auto !important}' +
+        '[data-om-fakepage]{break-after:auto !important;page-break-after:auto !important}' +
+        (pageInset ? '[data-om-fakepage]{padding:0 !important;background:none !important}' : '') +
+        '}';
+      document.head.appendChild(ost);
+    }
+  } catch (e) {}
+  // macOS Preview renders Skia-PDF Luminosity soft-masks as opaque grey boxes;
+  // swap the CSS that triggers them for Preview-safe forms.
+  try {
+    for (const el of document.body.querySelectorAll('*')) {
+      const cs = getComputedStyle(el);
+
+      if (cs.boxShadow !== 'none' && cs.filter === 'none') {
+        const outs = [], kept = [];
+        for (const s of cs.boxShadow.split(/,(?![^(]*[)])/)) {
+          const t = s.trim();
+          const m = t.match(/^(rgba?[(][^)]+[)]) (-?[0-9.]+px) (-?[0-9.]+px) ([0-9.]+px) -?[0-9.]+px$/);
+          if (m && parseFloat(m[4]) > 0) outs.push('drop-shadow(' + m[2] + ' ' + m[3] + ' ' + m[4] + ' ' + m[1] + ')');
+          else kept.push(t);
+        }
+        if (outs.length) {
+          el.style.setProperty('filter', outs.join(' '), 'important');
+          el.style.setProperty('box-shadow', kept.join(', ') || 'none', 'important');
+        }
+      }
+
+      const mask = cs.maskImage && cs.maskImage !== 'none' ? cs.maskImage : cs.webkitMaskImage;
+      if (mask && mask !== 'none' && cs.filter === 'none') el.style.setProperty('filter', 'opacity(1)', 'important');
+    }
+  } catch (e) {}
+  setTimeout(() => { try { window.print(); } catch (e) {} }, 200);
+})();
+</script>
+</body>
+</html>
