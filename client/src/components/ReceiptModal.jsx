@@ -29,7 +29,10 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
             <span>Order #{order.number}</span>
             <span>{m.icon} {m.label}</span>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>Tel: {order.phone}</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            📞 <a href={`tel:${order.phone}`} style={{ color: 'var(--accent)' }}>{order.phone}</a>
+          </div>
+          {order.note && <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 2 }}>Note: {order.note}</div>}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>

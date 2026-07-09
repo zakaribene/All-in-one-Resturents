@@ -3,7 +3,7 @@ export default function TopBar({ right }) {
     <div
       style={{
         position: 'sticky', top: 0, zIndex: 60, display: 'flex', alignItems: 'center', gap: 18,
-        padding: '12px 22px', background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(14px)',
+        padding: '12px 22px', background: 'color-mix(in srgb, var(--surface) 90%, transparent)', backdropFilter: 'blur(14px)',
         borderBottom: '1px solid var(--border)',
       }}
     >

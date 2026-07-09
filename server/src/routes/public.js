@@ -25,14 +25,15 @@ router.get('/menu/:code', async (req, res) => {
     },
     categories: categories.map(c => ({ id: c._id, en: c.nameEn, so: c.nameSo })),
     products: products.map(p => ({
-      id: p._id, en: p.nameEn, so: p.nameSo, price: p.price, category: p.category, hue: p.hue,
+      id: p._id, en: p.nameEn, so: p.nameSo, price: p.price, category: p.category, hue: p.hue, imageUrl: p.imageUrl,
     })),
   });
 });
 
 router.post('/orders', async (req, res) => {
-  const { code, phone, items } = req.body || {};
+  const { code, phone, note, items } = req.body || {};
   const cleanPhone = String(phone || '').trim();
+  const cleanNote = String(note || '').trim();
   if (!cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
 
@@ -61,7 +62,7 @@ router.post('/orders', async (req, res) => {
   const order = await Order.create({
     restaurant: restaurant._id, number, channel: table.type,
     tableLabel: table.type === 'table' ? table.label : null,
-    phone: cleanPhone, items: orderItems, total, status: 'new',
+    phone: cleanPhone, note: cleanNote, items: orderItems, total, status: 'new',
   });
 
   await Product.bulkWrite(items.map(i => ({
@@ -70,7 +71,7 @@ router.post('/orders', async (req, res) => {
 
   const payload = {
     id: order._id, number: order.number, channel: order.channel, tableLabel: order.tableLabel,
-    phone: order.phone, items: order.items, total: order.total, status: order.status, createdAt: order.createdAt,
+    phone: order.phone, note: order.note, items: order.items, total: order.total, status: order.status, createdAt: order.createdAt,
   };
   emitToRestaurant(restaurant._id, 'order:new', payload);
 

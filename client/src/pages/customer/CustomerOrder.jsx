@@ -21,6 +21,7 @@ export default function CustomerOrder() {
   const [step, setStep] = useState('menu');
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState(false);
+  const [note, setNote] = useState('');
   const [lastOrder, setLastOrder] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState('');
@@ -54,7 +55,7 @@ export default function CustomerOrder() {
     setPlacing(true); setPlaceError('');
     try {
       const items = Object.entries(cart).map(([productId, qty]) => ({ productId, qty }));
-      const { data } = await api.post('/public/orders', { code, phone: phone.trim(), items });
+      const { data } = await api.post('/public/orders', { code, phone: phone.trim(), note: note.trim(), items });
       setLastOrder({
         number: data.number,
         items: Object.entries(cart).map(([pid, qty]) => {
@@ -72,7 +73,7 @@ export default function CustomerOrder() {
   }
 
   function resetAll() {
-    setStep('menu'); setCart({}); setPhone(''); setPhoneError(false); setLastOrder(null); setPlaceError('');
+    setStep('menu'); setCart({}); setPhone(''); setPhoneError(false); setNote(''); setLastOrder(null); setPlaceError('');
   }
 
   if (error) {
@@ -122,7 +123,9 @@ export default function CustomerOrder() {
                 const qty = cart[p.id] || 0;
                 return (
                   <div key={p.id} style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid var(--border-soft)', borderRadius: 15, padding: 10 }}>
-                    <div style={{ width: 66, height: 66, borderRadius: 12, flex: '0 0 auto', ...imgStyle(p.hue) }} />
+                    <div style={{ width: 66, height: 66, borderRadius: 12, flex: '0 0 auto', overflow: 'hidden', ...(p.imageUrl ? {} : imgStyle(p.hue)) }}>
+                      {p.imageUrl && <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                    </div>
                     <div style={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{p.en}</div>
                       <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 5 }}>{p.so}</div>
@@ -190,6 +193,12 @@ export default function CustomerOrder() {
               onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
             />
             {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
+            <label className="field-label">Faah faahin · Note (optional)</label>
+            <textarea
+              className="field-input" style={{ marginBottom: 14, minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }}
+              placeholder="Tusaale: aan lasoo darin basal · e.g. no onions" value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
             <div style={{ display: 'flex', justifyContent: 'space-between', margin: '10px 0 14px' }}>
               <span style={{ color: 'var(--muted-1)', fontWeight: 600 }}>Wadarta · Total</span>
               <span style={{ fontWeight: 800, fontSize: 20 }}>${cartTotal.toFixed(2)}</span>

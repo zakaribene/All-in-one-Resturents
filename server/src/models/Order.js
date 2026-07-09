@@ -12,6 +12,7 @@ const OrderSchema = new mongoose.Schema({
   channel: { type: String, enum: ['table', 'takeaway', 'online'], required: true },
   tableLabel: { type: String, default: null },
   phone: { type: String, required: true, trim: true },
+  note: { type: String, default: '', trim: true },
   items: { type: [OrderItemSchema], required: true, validate: v => Array.isArray(v) && v.length > 0 },
   total: { type: Number, required: true, min: 0 },
   status: { type: String, enum: ['new', 'preparing', 'done'], default: 'new' },

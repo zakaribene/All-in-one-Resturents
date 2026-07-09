@@ -68,13 +68,23 @@ function mapProduct(p) {
   };
 }
 
-router.post('/products', async (req, res) => {
+router.post('/products', upload.single('image'), async (req, res) => {
   const { nameEn, nameSo, price, category } = req.body || {};
   if (!nameEn || !nameSo || price == null || !category) return res.status(400).json({ error: 'nameEn, nameSo, price, category are required' });
   const cat = await Category.findOne({ _id: category, restaurant: req.auth.id });
   if (!cat) return res.status(400).json({ error: 'Invalid category' });
-  const p = await Product.create({ restaurant: req.auth.id, category, nameEn, nameSo, price: Number(price) });
+  const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
+  const p = await Product.create({ restaurant: req.auth.id, category, nameEn, nameSo, price: Number(price), imageUrl });
   res.status(201).json(mapProduct(p));
+});
+
+router.post('/products/:id/image', upload.single('image'), async (req, res) => {
+  const p = await Product.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!p) return res.status(404).json({ error: 'Not found' });
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  p.imageUrl = `/uploads/${req.file.filename}`;
+  await p.save();
+  res.json(mapProduct(p));
 });
 
 router.patch('/products/:id/toggle', async (req, res) => {
@@ -83,6 +93,29 @@ router.patch('/products/:id/toggle', async (req, res) => {
   p.status = p.status === 'active' ? 'inactive' : 'active';
   await p.save();
   res.json(mapProduct(p));
+});
+
+router.patch('/products/:id', upload.single('image'), async (req, res) => {
+  const p = await Product.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!p) return res.status(404).json({ error: 'Not found' });
+  const { nameEn, nameSo, price, category } = req.body || {};
+  if (category) {
+    const cat = await Category.findOne({ _id: category, restaurant: req.auth.id });
+    if (!cat) return res.status(400).json({ error: 'Invalid category' });
+    p.category = category;
+  }
+  if (nameEn) p.nameEn = nameEn;
+  if (nameSo) p.nameSo = nameSo;
+  if (price != null) p.price = Number(price);
+  if (req.file) p.imageUrl = `/uploads/${req.file.filename}`;
+  await p.save();
+  res.json(mapProduct(p));
+});
+
+router.delete('/products/:id', async (req, res) => {
+  const p = await Product.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
+  if (!p) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 });
 
 // ---- Tables ----
@@ -109,7 +142,7 @@ router.get('/orders', async (req, res) => {
 
 function mapOrder(o) {
   return {
-    id: o._id, number: o.number, channel: o.channel, tableLabel: o.tableLabel, phone: o.phone,
+    id: o._id, number: o.number, channel: o.channel, tableLabel: o.tableLabel, phone: o.phone, note: o.note,
     items: o.items, total: o.total, status: o.status, createdAt: o.createdAt,
   };
 }
@@ -124,6 +157,12 @@ router.post('/orders/:id/complete', async (req, res) => {
   const o = await Order.findOneAndUpdate({ _id: req.params.id, restaurant: req.auth.id }, { status: 'done' }, { new: true });
   if (!o) return res.status(404).json({ error: 'Not found' });
   res.json(mapOrder(o));
+});
+
+router.delete('/orders/:id', async (req, res) => {
+  const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
+  if (!o) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 });
 
 router.post('/orders/simulate', async (req, res) => {

@@ -58,7 +58,10 @@ export default function Restaurants() {
                 <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>{r.city}</div>
               </div>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted-5)' }}>{r.owner}</div>
+            <div style={{ lineHeight: 1.3 }}>
+              <div style={{ fontSize: 13, color: 'var(--muted-5)' }}>{r.owner || '—'}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted-3)' }} className="mono">@{r.username}</div>
+            </div>
             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted-4)' }}>{r.plan}</div>
             <div style={{ fontSize: 13, fontWeight: 700 }} className="mono">{r.orders.toLocaleString()}</div>
             <div>
@@ -151,6 +154,25 @@ function AddRestaurantModal({ onClose, onCreated }) {
 
 function ViewRestaurantModal({ restaurant, onClose }) {
   const r = restaurant;
+  const [resetting, setResetting] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submitReset(e) {
+    e.preventDefault();
+    setError(''); setSuccess(''); setBusy(true);
+    try {
+      await api.patch(`/admin/restaurants/${r.id}/password`, { newPassword });
+      setSuccess('Furaha waa la beddelay · Password updated.');
+      setNewPassword('');
+      setResetting(false);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to reset password'));
+    } finally { setBusy(false); }
+  }
+
   return (
     <Modal onClose={onClose} width={420}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
@@ -176,6 +198,31 @@ function ViewRestaurantModal({ restaurant, onClose }) {
         <div><b>Status:</b> {r.status}</div>
         <div><b>Joined:</b> {new Date(r.createdAt).toLocaleDateString()}</div>
       </div>
+
+      <div style={{ borderTop: '1px solid var(--border-soft)', marginTop: 16, paddingTop: 14 }}>
+        {!resetting && (
+          <button className="btn-outline" style={{ width: '100%' }} onClick={() => { setResetting(true); setSuccess(''); }}>
+            🔑 Beddel furaha sirta · Reset password
+          </button>
+        )}
+        {resetting && (
+          <form onSubmit={submitReset}>
+            <label className="field-label">Furaha cusub · New password</label>
+            <input
+              className="field-input" style={{ marginBottom: 12 }} type="text" required minLength={6}
+              value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Ugu yaraan 6 xaraf · At least 6 characters"
+            />
+            {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => { setResetting(false); setError(''); }}>Cancel</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={busy}>{busy ? 'Saving…' : 'Keydi · Save'}</button>
+            </div>
+          </form>
+        )}
+        {success && <div style={{ color: 'var(--success)', fontSize: 13, marginTop: 10 }}>{success}</div>}
+      </div>
+
       <div style={{ marginTop: 18, textAlign: 'right' }}>
         <button className="btn-outline" onClick={onClose}>Close</button>
       </div>

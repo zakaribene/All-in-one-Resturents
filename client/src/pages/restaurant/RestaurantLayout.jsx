@@ -1,42 +1,104 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
-import { useRestaurantAuth } from '../../lib/AuthContext';
+import ProfileMenu from '../../components/ProfileMenu';
+import NotificationBell from '../../components/NotificationBell';
+import ThemeToggle from '../../components/ThemeToggle';
+import ToastStack from '../../components/ToastStack';
 import { api } from '../../lib/api';
+import { getSocket } from '../../lib/socket';
+import { playBeep } from '../../lib/toast';
+import { useToasts } from '../../lib/useToasts';
 
 const NAV = [
+  { id: 'overview', so: 'Guudmar', en: 'Dashboard', ic: '⌂' },
   { id: 'orders', so: 'Dalabyada', en: 'Orders', ic: '▤' },
   { id: 'products', so: 'Cuntooyinka', en: 'Products', ic: '◈' },
   { id: 'categories', so: 'Qaybaha', en: 'Categories', ic: '≡' },
-  { id: 'sales', so: 'Iibka', en: 'Sales', ic: '↗' },
   { id: 'qr', so: 'QR Codes', en: 'QR Codes', ic: '▦' },
 ];
 
 export default function RestaurantLayout() {
-  const { logout } = useRestaurantAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
-  const active = NAV.find((n) => location.pathname.includes(n.id))?.id || 'orders';
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+  const [ringing, setRinging] = useState(false);
+  const { toasts, addToast, dismissToast } = useToasts();
+  const soundOnRef = useRef(soundOn);
+  soundOnRef.current = soundOn;
+  const active = NAV.find((n) => location.pathname.includes(n.id))?.id || null;
 
   useEffect(() => {
     api.get('/restaurant/me').then((r) => setMe(r.data));
   }, []);
 
+  useEffect(() => {
+    if (!me?.id) return;
+    const socket = getSocket();
+    socket.emit('join:restaurant', me.id);
+
+    function ring() {
+      setRinging(true);
+      setTimeout(() => setRinging(false), 800);
+    }
+    function pushNotification(title, body) {
+      setNotifications((prev) => [{ id: 'n' + Date.now() + Math.random(), title, body, time: Date.now() }, ...prev].slice(0, 30));
+    }
+    function onNewOrder(order) {
+      const chLabel = order.channel === 'online' ? 'Online' : order.channel === 'takeaway' ? 'Takeaway' : 'Miis ' + order.tableLabel;
+      const title = 'Dalab cusub · New order #' + order.number;
+      const body = `${chLabel} · ${order.phone}`;
+      addToast({ title, body });
+      pushNotification(title, body);
+      if (soundOnRef.current) playBeep();
+      ring();
+    }
+    function onNotification(n) {
+      addToast({ title: n.title, body: n.body });
+      pushNotification(n.title, n.body);
+      ring();
+    }
+    socket.on('order:new', onNewOrder);
+    socket.on('notification:new', onNotification);
+    return () => {
+      socket.off('order:new', onNewOrder);
+      socket.off('notification:new', onNotification);
+    };
+  }, [me?.id, addToast]);
+
   return (
     <div style={{ minHeight: '100vh' }}>
       <TopBar
         right={
-          <button className="btn-outline" onClick={() => { logout(); navigate('/'); }}>
-            Ka bax · Logout
-          </button>
+          <>
+            <ThemeToggle />
+            <NotificationBell notifications={notifications} ringing={ringing} onClearAll={() => setNotifications([])} />
+            <div style={{ position: 'relative' }}>
+              <button className="btn-outline" onClick={() => setProfileOpen((v) => !v)}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: 7, background: `hsl(${me?.hue ?? 212} 65% 95%)`, color: `hsl(${me?.hue ?? 212} 55% 42%)`,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, overflow: 'hidden', marginRight: 8, verticalAlign: 'middle',
+                }}>
+                  {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me?.name?.[0] || '·')}
+                </div>
+                Profile
+              </button>
+              {profileOpen && <ProfileMenu me={me} setMe={setMe} onClose={() => setProfileOpen(false)} />}
+            </div>
+          </>
         }
       />
       <div className="app-shell" style={{ minHeight: 'calc(100vh - 60px)' }}>
         <Sidebar
           header={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 8px 16px' }}>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 8px 16px', cursor: 'pointer' }}
+              onClick={() => navigate('/dashboard/overview')}
+            >
               <div style={{
                 width: 38, height: 38, borderRadius: 11, background: `hsl(${me?.hue ?? 212} 65% 95%)`, color: `hsl(${me?.hue ?? 212} 55% 42%)`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, overflow: 'hidden',
@@ -54,9 +116,10 @@ export default function RestaurantLayout() {
           onSelect={(id) => navigate('/dashboard/' + id)}
         />
         <main className="main-area tight">
-          <Outlet context={{ me, setMe }} />
+          <Outlet context={{ me, setMe, soundOn, setSoundOn }} />
         </main>
       </div>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

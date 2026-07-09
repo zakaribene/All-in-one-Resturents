@@ -5,12 +5,32 @@ const Order = require('../models/Order');
 const Table = require('../models/Table');
 const Notification = require('../models/Notification');
 const Activity = require('../models/Activity');
+const AdminUser = require('../models/AdminUser');
 const { requireAdmin } = require('../middleware/auth');
 const { makeTableCode, slugify } = require('../utils/codes');
 const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
 
 const router = express.Router();
 router.use(requireAdmin);
+
+router.get('/me', async (req, res) => {
+  const admin = await AdminUser.findById(req.auth.id).lean();
+  if (!admin) return res.status(404).json({ error: 'Not found' });
+  res.json({ id: admin._id, username: admin.username, name: admin.name });
+});
+
+router.patch('/me/password', async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  const admin = await AdminUser.findById(req.auth.id);
+  if (!admin) return res.status(404).json({ error: 'Not found' });
+  const ok = await bcrypt.compare(currentPassword, admin.passwordHash);
+  if (!ok) return res.status(400).json({ error: 'Current password is incorrect' });
+  admin.passwordHash = await bcrypt.hash(newPassword, 10);
+  await admin.save();
+  res.json({ ok: true });
+});
 
 router.get('/overview', async (req, res) => {
   const restaurants = await Restaurant.find().lean();
@@ -72,7 +92,7 @@ router.get('/restaurants', async (req, res) => {
   res.json(restaurants.map(r => {
     const m = map.get(String(r._id)) || { orders: 0, revenue: 0 };
     return {
-      id: r._id, name: r.name, city: r.city, owner: r.ownerName, plan: r.plan, status: r.status,
+      id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username, plan: r.plan, status: r.status,
       hue: r.hue, orders: m.orders, revenue: '$' + m.revenue.toFixed(2),
     };
   }));
@@ -122,6 +142,17 @@ router.patch('/restaurants/:id/toggle', async (req, res) => {
     dot: r.status === 'suspended' ? '#E5484D' : '#12A150',
   });
   res.json({ id: r._id, status: r.status });
+});
+
+router.patch('/restaurants/:id/password', async (req, res) => {
+  const { newPassword } = req.body || {};
+  if (!newPassword || String(newPassword).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  r.passwordHash = await bcrypt.hash(newPassword, 10);
+  await r.save();
+  await Activity.create({ restaurant: r._id, message: `${r.name} password was reset by admin`, dot: '#E8A317' });
+  res.json({ ok: true });
 });
 
 router.post('/notifications', async (req, res) => {
