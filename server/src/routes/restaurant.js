@@ -55,6 +55,26 @@ router.post('/categories', async (req, res) => {
   res.status(201).json({ id: cat._id, en: cat.nameEn, so: cat.nameSo });
 });
 
+router.patch('/categories/:id', async (req, res) => {
+  const { nameEn, nameSo } = req.body || {};
+  if (!nameEn || !nameSo) return res.status(400).json({ error: 'nameEn and nameSo are required' });
+  const cat = await Category.findOneAndUpdate(
+    { _id: req.params.id, restaurant: req.auth.id },
+    { nameEn, nameSo },
+    { new: true },
+  );
+  if (!cat) return res.status(404).json({ error: 'Not found' });
+  res.json({ id: cat._id, en: cat.nameEn, so: cat.nameSo });
+});
+
+router.delete('/categories/:id', async (req, res) => {
+  const inUse = await Product.countDocuments({ restaurant: req.auth.id, category: req.params.id });
+  if (inUse > 0) return res.status(409).json({ error: 'Category has products, move or delete them first' });
+  const cat = await Category.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
+  if (!cat) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
 // ---- Products ----
 router.get('/products', async (req, res) => {
   const products = await Product.find({ restaurant: req.auth.id }).sort({ createdAt: -1 }).lean();
