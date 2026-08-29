@@ -163,7 +163,7 @@ router.get('/orders', async (req, res) => {
 function mapOrder(o) {
   return {
     id: o._id, number: o.number, channel: o.channel, tableLabel: o.tableLabel, phone: o.phone, note: o.note,
-    items: o.items, total: o.total, status: o.status, createdAt: o.createdAt,
+    items: o.items, total: o.total, status: o.status, payment: o.payment, createdAt: o.createdAt,
   };
 }
 
@@ -183,6 +183,15 @@ router.delete('/orders/:id', async (req, res) => {
   const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!o) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
+});
+
+router.get('/payments', async (req, res) => {
+  const orders = await Order.find({ restaurant: req.auth.id, 'payment.method': 'waafipay' })
+    .sort({ createdAt: -1 }).limit(300).lean();
+  res.json(orders.map(o => ({
+    id: o._id, number: o.number, phone: o.phone, total: o.total, createdAt: o.createdAt,
+    payment: o.payment,
+  })));
 });
 
 router.post('/orders/simulate', async (req, res) => {

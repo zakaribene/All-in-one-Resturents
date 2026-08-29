@@ -6,9 +6,11 @@ const Table = require('../models/Table');
 const Notification = require('../models/Notification');
 const Activity = require('../models/Activity');
 const AdminUser = require('../models/AdminUser');
+const PaymentAccount = require('../models/PaymentAccount');
 const { requireAdmin } = require('../middleware/auth');
 const { makeTableCode, slugify } = require('../utils/codes');
 const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -171,6 +173,66 @@ router.post('/notifications', async (req, res) => {
   else emitToAllRestaurants('notification:new', payload);
 
   res.status(201).json({ id: notif._id });
+});
+
+// ---- Payment accounts (WaafiPay: EVC Plus / ZAAD / eDahab) ----
+function maskAccount(a) {
+  return {
+    id: a._id, provider: a.provider, label: a.label, baseUrl: a.baseUrl, merchantUid: a.merchantUid,
+    apiUserIdMasked: '••••' + decrypt(a.apiUserId).slice(-4),
+    apiKeyMasked: '••••' + decrypt(a.apiKey).slice(-4),
+    currency: a.currency, isPrimary: a.isPrimary, status: a.status, createdAt: a.createdAt,
+  };
+}
+
+router.get('/restaurants/:id/payment-accounts', async (req, res) => {
+  const accounts = await PaymentAccount.find({ restaurant: req.params.id }).lean();
+  res.json(accounts.map(maskAccount));
+});
+
+router.post('/restaurants/:id/payment-accounts', async (req, res) => {
+  const { provider, label, baseUrl, merchantUid, apiUserId, apiKey, currency, isPrimary } = req.body || {};
+  if (!['evc', 'zaad', 'edahab'].includes(provider)) return res.status(400).json({ error: 'provider must be evc, zaad, or edahab' });
+  if (!baseUrl || !merchantUid || !apiUserId || !apiKey) return res.status(400).json({ error: 'baseUrl, merchantUid, apiUserId, apiKey are required' });
+  const restaurant = await Restaurant.findById(req.params.id);
+  if (!restaurant) return res.status(404).json({ error: 'Not found' });
+  const existing = await PaymentAccount.findOne({ restaurant: restaurant._id, provider });
+  if (existing) return res.status(409).json({ error: 'Provider already connected, edit or remove it first' });
+  if (isPrimary) await PaymentAccount.updateMany({ restaurant: restaurant._id }, { isPrimary: false });
+  const account = await PaymentAccount.create({
+    restaurant: restaurant._id, provider, label: label || '', baseUrl: baseUrl.trim(), merchantUid,
+    apiUserId: encrypt(apiUserId), apiKey: encrypt(apiKey),
+    currency: currency || 'USD', isPrimary: !!isPrimary,
+  });
+  await Activity.create({ restaurant: restaurant._id, message: `${restaurant.name}: ${label || provider} connected`, dot: '#12A150' });
+  res.status(201).json({ id: account._id });
+});
+
+router.patch('/restaurants/:id/payment-accounts/:accountId', async (req, res) => {
+  const account = await PaymentAccount.findOne({ _id: req.params.accountId, restaurant: req.params.id });
+  if (!account) return res.status(404).json({ error: 'Not found' });
+  const { label, baseUrl, merchantUid, apiUserId, apiKey, currency, isPrimary, status } = req.body || {};
+  if (label != null) account.label = label;
+  if (baseUrl) account.baseUrl = baseUrl.trim();
+  if (merchantUid) account.merchantUid = merchantUid;
+  if (apiUserId) account.apiUserId = encrypt(apiUserId);
+  if (apiKey) account.apiKey = encrypt(apiKey);
+  if (currency) account.currency = currency;
+  if (status && ['active', 'disabled'].includes(status)) account.status = status;
+  if (isPrimary) {
+    await PaymentAccount.updateMany({ restaurant: req.params.id, _id: { $ne: account._id } }, { isPrimary: false });
+    account.isPrimary = true;
+  } else if (isPrimary === false) {
+    account.isPrimary = false;
+  }
+  await account.save();
+  res.json({ ok: true });
+});
+
+router.delete('/restaurants/:id/payment-accounts/:accountId', async (req, res) => {
+  const account = await PaymentAccount.findOneAndDelete({ _id: req.params.accountId, restaurant: req.params.id });
+  if (!account) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 });
 
 module.exports = router;

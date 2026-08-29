@@ -12,6 +12,10 @@ function channelMeta(type, label) {
   return { label: 'Miis ' + label, icon: '📍', sub: 'Isku dalbo · self order' };
 }
 
+function newClientRequestId() {
+  return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+}
+
 export default function CustomerOrder() {
   const { code } = useParams();
   const [menu, setMenu] = useState(null);
@@ -25,9 +29,15 @@ export default function CustomerOrder() {
   const [lastOrder, setLastOrder] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState('');
+  const [paymentProvider, setPaymentProvider] = useState(null);
+  const [clientRequestId, setClientRequestId] = useState(newClientRequestId);
+  const [declineInfo, setDeclineInfo] = useState(null);
 
   useEffect(() => {
-    api.get(`/public/menu/${code}`).then((r) => setMenu(r.data)).catch((e) => setError(apiErrorMessage(e, 'Invalid QR code')));
+    api.get(`/public/menu/${code}`).then((r) => {
+      setMenu(r.data);
+      setPaymentProvider(r.data.defaultProvider || null);
+    }).catch((e) => setError(apiErrorMessage(e, 'Invalid QR code')));
   }, [code]);
 
   const categories = useMemo(() => [{ id: 'all', en: 'All', so: 'Dhammaan' }, ...(menu?.categories || [])], [menu]);
@@ -50,23 +60,60 @@ export default function CustomerOrder() {
     });
   }
 
+  const paymentOptions = menu?.paymentOptions || [];
+  const hasPayment = paymentOptions.length > 0;
+  const providerLabel = (key) => paymentOptions.find((p) => p.provider === key)?.label || key;
+
+  function orderItemLines() {
+    return Object.entries(cart).map(([pid, qty]) => {
+      const p = menu.products.find((x) => x.id === pid);
+      return { txt: `${qty}× ${p.en}` };
+    });
+  }
+
   async function placeOrder() {
     if (!phone.trim()) { setPhoneError(true); return; }
-    setPlacing(true); setPlaceError('');
+    setPlacing(true); setPlaceError(''); setDeclineInfo(null);
+    if (hasPayment) setStep('paying');
     try {
       const items = Object.entries(cart).map(([productId, qty]) => ({ productId, qty }));
-      const { data } = await api.post('/public/orders', { code, phone: phone.trim(), note: note.trim(), items });
-      setLastOrder({
-        number: data.number,
-        items: Object.entries(cart).map(([pid, qty]) => {
-          const p = menu.products.find((x) => x.id === pid);
-          return { txt: `${qty}× ${p.en}` };
-        }),
-        total: cartTotal,
-      });
+      const { data } = await api.post('/public/orders', {
+        code, phone: phone.trim(), note: note.trim(), items,
+        paymentProvider: hasPayment ? paymentProvider : undefined,
+        clientRequestId: hasPayment ? clientRequestId : undefined,
+      }, { timeout: 50000 });
+      setLastOrder({ number: data.number, items: orderItemLines(), total: cartTotal, payment: data.payment || null });
       setStep('placed');
     } catch (e) {
-      setPlaceError(apiErrorMessage(e, 'Failed to place order'));
+      const res = e?.response?.data;
+      if (e?.response?.status === 402 && res?.orderId) {
+        setDeclineInfo(res);
+        setStep('declined');
+      } else {
+        setPlaceError(apiErrorMessage(e, 'Failed to place order'));
+        setStep('cart');
+      }
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  async function retryPayment() {
+    setClientRequestId(newClientRequestId());
+    setDeclineInfo(null);
+    setStep('cart');
+  }
+
+  async function payAtTableFallback() {
+    if (!declineInfo?.orderId) return;
+    setPlacing(true);
+    try {
+      const { data } = await api.post(`/public/orders/${declineInfo.orderId}/pay-at-table`);
+      setLastOrder({ number: data.number, items: orderItemLines(), total: cartTotal, payment: { status: 'none', method: 'pay_at_table' } });
+      setDeclineInfo(null);
+      setStep('placed');
+    } catch (e) {
+      setPlaceError(apiErrorMessage(e, 'Failed to switch to pay at table'));
     } finally {
       setPlacing(false);
     }
@@ -74,6 +121,7 @@ export default function CustomerOrder() {
 
   function resetAll() {
     setStep('menu'); setCart({}); setPhone(''); setPhoneError(false); setNote(''); setLastOrder(null); setPlaceError('');
+    setDeclineInfo(null); setClientRequestId(newClientRequestId());
   }
 
   if (error) {
@@ -199,6 +247,20 @@ export default function CustomerOrder() {
               placeholder="Tusaale: aan lasoo darin basal · e.g. no onions" value={note}
               onChange={(e) => setNote(e.target.value)}
             />
+            {paymentOptions.length > 1 && (
+              <>
+                <label className="field-label">Sida aad ku bixineyso · Pay with</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                  {paymentOptions.map((p) => (
+                    <button
+                      key={p.provider} type="button"
+                      className={'chip' + (paymentProvider === p.provider ? ' active' : '')}
+                      onClick={() => setPaymentProvider(p.provider)}
+                    >{p.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', margin: '10px 0 14px' }}>
               <span style={{ color: 'var(--muted-1)', fontWeight: 600 }}>Wadarta · Total</span>
               <span style={{ fontWeight: 800, fontSize: 20 }}>${cartTotal.toFixed(2)}</span>
@@ -207,7 +269,44 @@ export default function CustomerOrder() {
             <button className="btn btn-primary" style={{ width: '100%', padding: 15, borderRadius: 14, fontSize: 15 }} onClick={placeOrder} disabled={placing}>
               {placing ? 'Diraya…' : 'Dir dalabka · Place order'}
             </button>
-            <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted-3)', marginTop: 10 }}>Lacagta waxaad bixin doontaa miiska · Pay at table (online pay soon)</div>
+            <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted-3)', marginTop: 10 }}>
+              {hasPayment
+                ? `Waxaad ku bixinaysaa · Paying via ${providerLabel(paymentProvider)}`
+                : "Lacagta waxaad bixin doontaa miiska · Pay at table (online pay soon)"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'paying' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 26px', minHeight: '100vh' }}>
+          <div style={{ width: 84, height: 84, borderRadius: 99, background: 'var(--panel)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, marginBottom: 20 }}>📱</div>
+          <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 6 }}>Fadlan hubi taleefankaaga</div>
+          <div style={{ fontSize: 14, color: 'var(--muted-1)', marginBottom: 4 }}>Confirm the payment prompt on {phone}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted-3)', marginTop: 14 }}>Kani wuxuu qaadan karaa ilaa 45 sekend · This can take up to 45 seconds</div>
+        </div>
+      )}
+
+      {step === 'declined' && declineInfo && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 26px', minHeight: '100vh' }}>
+          <div style={{ width: 84, height: 84, borderRadius: 99, background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, marginBottom: 20 }}>✕</div>
+          <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>{declineInfo.error}</div>
+          {declineInfo.needsManualVerification && (
+            <div style={{ fontSize: 13, color: 'var(--muted-2)', marginBottom: 18, maxWidth: 320 }}>
+              Fadlan la xiriir shaqaalaha maqaayada · Please check with restaurant staff before paying again.
+            </div>
+          )}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+            {declineInfo.allowRetry && (
+              <button className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }} onClick={retryPayment} disabled={placing}>
+                Isku day mar kale · Try again
+              </button>
+            )}
+            {declineInfo.allowPayAtTable && (
+              <button className="btn-outline" style={{ width: '100%', padding: 14, borderRadius: 14 }} onClick={payAtTableFallback} disabled={placing}>
+                Bixi miiska · Pay at table instead
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -217,7 +316,12 @@ export default function CustomerOrder() {
           <div style={{ width: 84, height: 84, borderRadius: 99, background: 'var(--success-bg)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 44, marginBottom: 20 }}>✓</div>
           <div style={{ fontWeight: 800, fontSize: 22 }}>Dalabka waa la diray!</div>
           <div style={{ fontSize: 14, color: 'var(--muted-1)', marginBottom: 4 }}>Order sent to the kitchen</div>
-          <div className="mono" style={{ fontWeight: 700, fontSize: 15, color: 'var(--accent)', marginBottom: 20 }}>#{lastOrder.number} · {cm.icon} {cm.label}</div>
+          <div className="mono" style={{ fontWeight: 700, fontSize: 15, color: 'var(--accent)', marginBottom: 8 }}>#{lastOrder.number} · {cm.icon} {cm.label}</div>
+          {lastOrder.payment?.status === 'paid' && (
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', marginBottom: 12 }}>
+              ✓ Lacagta ${lastOrder.total.toFixed(2)} waa la bixiyay · Paid via {providerLabel(paymentProvider)}
+            </div>
+          )}
           <div style={{ width: '100%', background: 'var(--panel)', border: '1px solid var(--border-soft)', borderRadius: 14, padding: '14px 16px', textAlign: 'left', marginBottom: 8 }}>
             {lastOrder.items.map((i, idx) => <div key={idx} style={{ fontSize: 13, color: 'var(--muted-5)', padding: '3px 0' }}>{i.txt}</div>)}
             <div style={{ borderTop: '1px dashed var(--border-strong)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>

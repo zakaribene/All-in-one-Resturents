@@ -16,6 +16,15 @@ const STATUS_META = {
   done: { label: 'Diyaar · Done', bg: 'var(--success-bg)', fg: 'var(--success)' },
 };
 
+function paymentMeta(payment) {
+  if (!payment || payment.status === 'none' || payment.method === 'pay_at_table') {
+    return { label: 'Bixi miiska · Pay at table', bg: 'var(--panel-2)', fg: 'var(--muted-3)' };
+  }
+  if (payment.status === 'paid') return { label: `✓ Paid · ${payment.provider || ''}`, bg: 'var(--success-bg)', fg: 'var(--success)' };
+  if (payment.status === 'timeout') return { label: '⚠ Verify manually', bg: 'var(--warning-bg)', fg: 'var(--warning-fg)' };
+  return { label: 'Pending', bg: 'var(--panel-2)', fg: 'var(--muted-3)' };
+}
+
 const TABS = [
   { id: 'all', so: 'Dhammaan', en: 'All' },
   { id: 'new', so: 'Cusub', en: 'New' },
@@ -165,8 +174,11 @@ export default function Orders() {
               </div>
               <div className="mono">{o.phone}</div>
               <div style={{ fontWeight: 800 }}>${o.total.toFixed(2)}</div>
-              <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                 <span style={{ background: s.bg, color: s.fg, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>{s.label}</span>
+                {(() => { const pm = paymentMeta(o.payment); return (
+                  <span style={{ background: pm.bg, color: pm.fg, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{pm.label}</span>
+                ); })()}
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button className="btn-outline btn-sm" onClick={() => setReceiptOrder(o)}>View</button>

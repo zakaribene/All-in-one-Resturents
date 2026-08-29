@@ -14,6 +14,7 @@ import { useToasts } from '../../lib/useToasts';
 const NAV = [
   { id: 'overview', so: 'Guudmar', en: 'Dashboard', ic: '⌂' },
   { id: 'orders', so: 'Dalabyada', en: 'Orders', ic: '▤' },
+  { id: 'payments', so: 'Lacag-bixinada', en: 'Payments', ic: '💳' },
   { id: 'products', so: 'Cuntooyinka', en: 'Products', ic: '◈' },
   { id: 'categories', so: 'Qaybaha', en: 'Categories', ic: '≡' },
   { id: 'qr', so: 'QR Codes', en: 'QR Codes', ic: '▦' },

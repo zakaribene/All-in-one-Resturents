@@ -14,6 +14,7 @@ import RestaurantLogin from './pages/restaurant/RestaurantLogin';
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
 import RestaurantOverview from './pages/restaurant/Overview';
 import Orders from './pages/restaurant/Orders';
+import Payments from './pages/restaurant/Payments';
 import Products from './pages/restaurant/Products';
 import Categories from './pages/restaurant/Categories';
 import QrTab from './pages/restaurant/QrTab';
@@ -67,6 +68,7 @@ export default function App() {
               <Route index element={<Navigate to="orders" replace />} />
               <Route path="overview" element={<RestaurantOverview />} />
               <Route path="orders" element={<Orders />} />
+              <Route path="payments" element={<Payments />} />
               <Route path="products" element={<Products />} />
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />
