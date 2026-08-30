@@ -16,6 +16,37 @@ function newClientRequestId() {
   return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 }
 
+function declineMeta(info) {
+  const reason = String(info.reason || '').toLowerCase();
+  if (reason.includes('kuguma filna') || reason.includes('kuma filna') || reason.includes('insufficient')) {
+    return {
+      tone: 'danger', icon: '💳',
+      title: { so: 'Haraaga akoonkaagu kugu ma filna', en: 'Insufficient balance in your account' },
+      so: null, en: null, hint: null,
+    };
+  }
+  if (info.needsManualVerification) {
+    return {
+      tone: 'warning', icon: '⏱',
+      so: 'Waqtigii xaqiijinta ayaa dhammaaday — waxaa laga yaabaa in lacagtu la qaaday.',
+      en: 'The confirmation timed out — your payment may or may not have gone through.',
+      hint: {
+        so: 'Fadlan la xiriir shaqaalaha maqaayada si loo hubiyo kahor inta aadan mar kale isku dayin.',
+        en: 'Please check with restaurant staff to confirm before trying again.',
+      },
+    };
+  }
+  if (!info.allowRetry) {
+    return { tone: 'danger', icon: '✕', so: info.error, en: null, hint: null };
+  }
+  return {
+    tone: 'danger', icon: '✕',
+    so: 'Lacagta maadan Aqbalin.',
+    en: 'Payment was declined.',
+   
+  };
+}
+
 export default function CustomerOrder() {
   const { code } = useParams();
   const [menu, setMenu] = useState(null);
@@ -237,7 +268,7 @@ export default function CustomerOrder() {
             <label className="field-label">Lambarka taleefanka · Phone number *</label>
             <input
               className={'field-input' + (phoneError ? ' error' : '')} style={{ marginBottom: phoneError ? 4 : 14 }}
-              placeholder="063 xxxxxxx" value={phone}
+              placeholder="061 xxxxxxx" value={phone}
               onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
             />
             {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
@@ -280,36 +311,98 @@ export default function CustomerOrder() {
 
       {step === 'paying' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 26px', minHeight: '100vh' }}>
-          <div style={{ width: 84, height: 84, borderRadius: 99, background: 'var(--panel)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, marginBottom: 20 }}>📱</div>
-          <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 6 }}>Fadlan hubi taleefankaaga</div>
+          <div className="pay-ping-wrap">
+            <span className="pay-ping" />
+            <span className="pay-ping" style={{ animationDelay: '.8s' }} />
+            <span className="pay-ping" style={{ animationDelay: '1.6s' }} />
+            <div className="pay-icon">📱</div>
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Fadlan hubi taleefankaaga
+            <span className="pay-dots">
+              <span className="pay-dot" /><span className="pay-dot" /><span className="pay-dot" />
+            </span>
+          </div>
           <div style={{ fontSize: 14, color: 'var(--muted-1)', marginBottom: 4 }}>Confirm the payment prompt on {phone}</div>
+          <div className="pay-progress"><div className="pay-progress-bar" /></div>
           <div style={{ fontSize: 12, color: 'var(--muted-3)', marginTop: 14 }}>Kani wuxuu qaadan karaa ilaa 45 sekend · This can take up to 45 seconds</div>
         </div>
       )}
 
-      {step === 'declined' && declineInfo && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 26px', minHeight: '100vh' }}>
-          <div style={{ width: 84, height: 84, borderRadius: 99, background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, marginBottom: 20 }}>✕</div>
-          <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>{declineInfo.error}</div>
-          {declineInfo.needsManualVerification && (
-            <div style={{ fontSize: 13, color: 'var(--muted-2)', marginBottom: 18, maxWidth: 320 }}>
-              Fadlan la xiriir shaqaalaha maqaayada · Please check with restaurant staff before paying again.
+      {step === 'declined' && declineInfo && (() => {
+        const meta = declineMeta(declineInfo);
+        const isWarning = meta.tone === 'warning';
+        const ref = declineInfo.orderId ? String(declineInfo.orderId).slice(-6).toUpperCase() : null;
+        return (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px 22px', minHeight: '100vh' }}>
+            <div
+              className="card"
+              style={{
+                width: '100%', maxWidth: 380, padding: '34px 28px', textAlign: 'center',
+                boxShadow: '0 30px 70px -30px rgba(16,26,43,.35)', animation: 'cardIn .35s cubic-bezier(.2,.8,.2,1)',
+              }}
+            >
+              <div
+                style={{
+                  width: 72, height: 72, borderRadius: 99, margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 32, animation: 'badgeIn .45s cubic-bezier(.2,.8,.2,1)',
+                  background: isWarning ? 'var(--warning-bg)' : 'var(--danger-bg)',
+                  color: isWarning ? 'var(--warning-fg)' : 'var(--danger)',
+                }}
+              >
+                {meta.icon}
+              </div>
+
+              <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 4 }}>
+                {meta.title ? `${meta.title.so} · ${meta.title.en}` : declineInfo.error}
+              </div>
+
+              {meta.en && (
+                <div style={{ fontSize: 13.5, color: 'var(--muted-1)', lineHeight: 1.55, marginTop: 10 }}>
+                  <div>{meta.so}</div>
+                  <div style={{ color: 'var(--muted-2)', marginTop: 2 }}>{meta.en}</div>
+                </div>
+              )}
+
+              {meta.hint && (
+                <div
+                  style={{
+                    fontSize: 12.5, lineHeight: 1.5, marginTop: 12, padding: '10px 13px', borderRadius: 11, textAlign: 'left',
+                    background: isWarning ? 'var(--warning-bg)' : 'var(--panel)',
+                    border: `1px solid ${isWarning ? 'var(--warning)' : 'var(--border-soft)'}`,
+                    color: isWarning ? 'var(--warning-fg)' : 'var(--muted-2)',
+                  }}
+                >
+                  <div>{meta.hint.so}</div>
+                  <div style={{ opacity: .85, marginTop: 2 }}>{meta.hint.en}</div>
+                </div>
+              )}
+
+              {ref && (
+                <div className="mono" style={{
+                  display: 'inline-block', fontSize: 11, fontWeight: 700, letterSpacing: '.03em', color: 'var(--muted-3)',
+                  background: 'var(--panel)', border: '1px solid var(--border-soft)', borderRadius: 8, padding: '5px 11px', marginTop: 18,
+                }}>
+                  Reference · {ref}
+                </div>
+              )}
+
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
+                {declineInfo.allowRetry && (
+                  <button className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }} onClick={retryPayment} disabled={placing}>
+                    Isku day mar kale · Try again
+                  </button>
+                )}
+                {declineInfo.allowPayAtTable && (
+                  <button className="btn-outline" style={{ width: '100%', padding: 14, borderRadius: 14 }} onClick={payAtTableFallback} disabled={placing}>
+                    Bixi miiska · Pay at table instead
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-            {declineInfo.allowRetry && (
-              <button className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }} onClick={retryPayment} disabled={placing}>
-                Isku day mar kale · Try again
-              </button>
-            )}
-            {declineInfo.allowPayAtTable && (
-              <button className="btn-outline" style={{ width: '100%', padding: 14, borderRadius: 14 }} onClick={payAtTableFallback} disabled={placing}>
-                Bixi miiska · Pay at table instead
-              </button>
-            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {step === 'placed' && lastOrder && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 26px', minHeight: '100vh' }}>

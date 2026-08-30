@@ -6,8 +6,11 @@ const morgan = require('morgan');
 const http = require('http');
 const { Server } = require('socket.io');
 
+const swaggerUi = require('swagger-ui-express');
+
 const { connectDB } = require('./db');
 const { initSocket } = require('./socket');
+const swaggerSpec = require('./swagger');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
@@ -25,6 +28,8 @@ app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api/openapi.json', (req, res) => res.json(swaggerSpec));
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/restaurant', restaurantRoutes);

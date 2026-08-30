@@ -1,8 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AdminAuthProvider, RestaurantAuthProvider, useAdminAuth, useRestaurantAuth } from './lib/AuthContext';
 
-import Landing from './pages/Landing';
-import AdminLogin from './pages/admin/AdminLogin';
+import Login from './pages/Login';
 import AdminLayout from './pages/admin/AdminLayout';
 import Overview from './pages/admin/Overview';
 import Restaurants from './pages/admin/Restaurants';
@@ -10,7 +9,6 @@ import Notifications from './pages/admin/Notifications';
 import Billing from './pages/admin/Billing';
 import AdminSettings from './pages/admin/Settings';
 
-import RestaurantLogin from './pages/restaurant/RestaurantLogin';
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
 import RestaurantOverview from './pages/restaurant/Overview';
 import Orders from './pages/restaurant/Orders';
@@ -23,12 +21,12 @@ import CustomerOrder from './pages/customer/CustomerOrder';
 
 function RequireAdmin({ children }) {
   const { isAuthed } = useAdminAuth();
-  return isAuthed ? children : <Navigate to="/admin/login" replace />;
+  return isAuthed ? children : <Navigate to="/" replace />;
 }
 
 function RequireRestaurant({ children }) {
   const { isAuthed } = useRestaurantAuth();
-  return isAuthed ? children : <Navigate to="/login" replace />;
+  return isAuthed ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -37,9 +35,8 @@ export default function App() {
       <RestaurantAuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Login />} />
 
-            <Route path="/admin/login" element={<AdminLogin />} />
             <Route
               path="/admin"
               element={
@@ -56,7 +53,6 @@ export default function App() {
               <Route path="settings" element={<AdminSettings />} />
             </Route>
 
-            <Route path="/login" element={<RestaurantLogin />} />
             <Route
               path="/dashboard"
               element={
