@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import { Pencil, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 
 function imgStyle(hue) {
-  return { background: `repeating-linear-gradient(135deg, hsl(${hue} 45% 91%) 0 9px, hsl(${hue} 45% 87%) 9px 18px)` };
+  return {
+    background: `repeating-linear-gradient(135deg, hsl(${hue} 70% 55% / .16) 0 9px, hsl(${hue} 70% 55% / .26) 9px 18px), var(--panel)`,
+  };
 }
 
 export default function Products() {
+  const { addToast, confirm } = useOutletContext();
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [filter, setFilter] = useState('all');
@@ -28,9 +33,20 @@ export default function Products() {
   }
 
   async function removeProduct(id) {
-    if (!window.confirm('Ma hubtaa inaad tirtirto cuntadan? · Delete this product?')) return;
-    await api.delete(`/restaurant/products/${id}`);
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    const p = products.find((x) => x.id === id);
+    const ok = await confirm({
+      title: 'Tirtir cuntada · Delete this product?',
+      message: p ? `"${p.en}" waa la tirtiri doonaa oo lama soo celin karo · This will permanently remove "${p.en}".` : undefined,
+      tone: 'danger', confirmLabel: 'Tirtir · Delete',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/restaurant/products/${id}`);
+      setProducts((prev) => prev.filter((x) => x.id !== id));
+      addToast({ title: 'Cuntada waa la tirtiray · Product deleted', tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
+    }
   }
 
   const catName = (id) => {
@@ -92,13 +108,13 @@ export default function Products() {
                   className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                   onClick={() => setEditProduct(p)}
                 >
-                  ✎ Edit
+                  <Pencil size={13} strokeWidth={2.25} /> Edit
                 </button>
                 <button
                   title="Tirtir · Delete" onClick={() => removeProduct(p.id)}
-                  style={{ width: 32, height: 32, flex: '0 0 auto', borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13 }}
+                  style={{ width: 32, height: 32, flex: '0 0 auto', borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  🗑
+                  <Trash2 size={14} strokeWidth={2.25} />
                 </button>
               </div>
             </div>
@@ -110,7 +126,10 @@ export default function Products() {
         <AddProductModal
           categories={categories}
           onClose={() => setShowAdd(false)}
-          onCreated={(p) => { setProducts((prev) => [p, ...prev]); setShowAdd(false); }}
+          onCreated={(p) => {
+            setProducts((prev) => [p, ...prev]); setShowAdd(false);
+            addToast({ title: 'Cuntada waa la daray · Product added', body: p.en, tone: 'success' });
+          }}
         />
       )}
       {editProduct && (
@@ -118,7 +137,10 @@ export default function Products() {
           product={editProduct}
           categories={categories}
           onClose={() => setEditProduct(null)}
-          onSaved={(p) => { setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x))); setEditProduct(null); }}
+          onSaved={(p) => {
+            setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x))); setEditProduct(null);
+            addToast({ title: 'Isbeddelka waa la keydiyay · Changes saved', body: p.en, tone: 'success' });
+          }}
         />
       )}
     </div>

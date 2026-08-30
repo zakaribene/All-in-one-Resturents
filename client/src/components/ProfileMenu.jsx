@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, apiErrorMessage } from '../lib/api';
 import { useRestaurantAuth } from '../lib/AuthContext';
+import { useOutsideClick } from '../lib/useOutsideClick';
 
 export default function ProfileMenu({ me, setMe, onClose }) {
   const { logout } = useRestaurantAuth();
@@ -10,6 +11,8 @@ export default function ProfileMenu({ me, setMe, onClose }) {
   const [error, setError] = useState('');
   const coverInput = useRef(null);
   const logoInput = useRef(null);
+  const panelRef = useRef(null);
+  useOutsideClick(panelRef, onClose);
 
   async function upload(kind, file) {
     if (!file) return;
@@ -30,16 +33,7 @@ export default function ProfileMenu({ me, setMe, onClose }) {
   if (!me) return null;
 
   return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70 }} />
-      <div
-        style={{
-          position: 'absolute', top: 'calc(100% + 10px)', right: 0, zIndex: 80, width: 320,
-          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden',
-          boxShadow: '0 24px 60px -20px rgba(16,26,43,.35)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div ref={panelRef} className="dropdown-panel" style={{ width: 320, borderRadius: 18 }}>
         <div
           style={{
             height: 110, position: 'relative',
@@ -97,7 +91,6 @@ export default function ProfileMenu({ me, setMe, onClose }) {
             Ka bax · Logout
           </button>
         </div>
-      </div>
-    </>
+    </div>
   );
 }

@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Store, Bell, CreditCard, Settings } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ThemeToggle from '../../components/ThemeToggle';
 import AdminProfileMenu from '../../components/AdminProfileMenu';
+import ToastStack from '../../components/ToastStack';
+import { useConfirm } from '../../components/useConfirm';
 import { api } from '../../lib/api';
+import { useToasts } from '../../lib/useToasts';
 
 const NAV = [
-  { id: 'overview', so: 'Guudmar', en: 'Overview', ic: '▤' },
-  { id: 'restaurants', so: 'Maqaayadaha', en: 'Restaurants', ic: '⌂' },
-  { id: 'notifications', so: 'Fariimaha', en: 'Notifications', ic: '◉' },
-  { id: 'billing', so: 'Lacagta', en: 'Billing', ic: '▸' },
-  { id: 'settings', so: 'Dejinta', en: 'Settings', ic: '⚙' },
+  { id: 'overview', so: 'Guudmar', en: 'Overview', icon: LayoutDashboard },
+  { id: 'restaurants', so: 'Maqaayadaha', en: 'Restaurants', icon: Store },
+  { id: 'notifications', so: 'Fariimaha', en: 'Notifications', icon: Bell },
+  { id: 'billing', so: 'Lacagta', en: 'Billing', icon: CreditCard },
+  { id: 'settings', so: 'Dejinta', en: 'Settings', icon: Settings },
 ];
 
 export default function AdminLayout() {
@@ -19,6 +23,8 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const { toasts, addToast, dismissToast } = useToasts();
+  const { confirm, confirmNode } = useConfirm();
   const active = NAV.find((n) => location.pathname.includes(n.id))?.id || 'overview';
 
   useEffect(() => {
@@ -65,9 +71,11 @@ export default function AdminLayout() {
           }
         />
         <main className="main-area">
-          <Outlet />
+          <Outlet context={{ addToast, confirm }} />
         </main>
       </div>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      {confirmNode}
     </div>
   );
 }

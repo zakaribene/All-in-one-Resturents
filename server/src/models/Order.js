@@ -24,7 +24,7 @@ const PaymentSchema = new mongoose.Schema({
 const OrderSchema = new mongoose.Schema({
   restaurant: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
   number: { type: Number, required: true },
-  channel: { type: String, enum: ['table', 'takeaway', 'online'], required: true },
+  channel: { type: String, enum: ['table', 'takeaway', 'online', 'pos'], required: true },
   tableLabel: { type: String, default: null },
   phone: { type: String, required: true, trim: true },
   note: { type: String, default: '', trim: true },

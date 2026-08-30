@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 
@@ -7,6 +8,7 @@ function initials(name) {
 }
 
 export default function Restaurants() {
+  const { addToast, confirm } = useOutletContext();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -20,9 +22,23 @@ export default function Restaurants() {
 
   useEffect(load, []);
 
-  async function toggle(id) {
-    await api.patch(`/admin/restaurants/${id}/toggle`);
-    load();
+  async function toggle(r) {
+    const suspending = r.status === 'active';
+    if (suspending) {
+      const ok = await confirm({
+        title: `Xir "${r.name}" · Suspend this restaurant?`,
+        message: 'Iyagu ma awoodi doonaan inay dalabyo aqbalaan ilaa aad dib u furto · They will not be able to take orders until you reactivate.',
+        tone: 'danger', confirmLabel: 'Xir · Suspend',
+      });
+      if (!ok) return;
+    }
+    try {
+      await api.patch(`/admin/restaurants/${r.id}/toggle`);
+      load();
+      addToast({ title: suspending ? 'Waa la xiray · Restaurant suspended' : 'Waa la furay · Restaurant activated', body: r.name, tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Action failed', body: apiErrorMessage(err), tone: 'error' });
+    }
   }
 
   async function openView(id) {
@@ -74,7 +90,7 @@ export default function Restaurants() {
               <button
                 className={r.status === 'active' ? 'btn-danger-outline' : 'btn-outline'}
                 style={r.status !== 'active' ? { color: 'var(--accent)' } : undefined}
-                onClick={() => toggle(r.id)}
+                onClick={() => toggle(r)}
               >
                 {r.status === 'active' ? 'Suspend' : 'Activate'}
               </button>
@@ -84,7 +100,15 @@ export default function Restaurants() {
         {!loading && list.length === 0 && <div style={{ padding: 24 }} className="text-muted">No restaurants yet.</div>}
       </div>
 
-      {showAdd && <AddRestaurantModal onClose={() => setShowAdd(false)} onCreated={() => { setShowAdd(false); load(); }} />}
+      {showAdd && (
+        <AddRestaurantModal
+          onClose={() => setShowAdd(false)}
+          onCreated={(name) => {
+            setShowAdd(false); load();
+            addToast({ title: 'Maqaayadda waa la diiwaan geliyay · Restaurant created', body: name, tone: 'success' });
+          }}
+        />
+      )}
       {viewing && <ViewRestaurantModal restaurant={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
@@ -102,7 +126,7 @@ function AddRestaurantModal({ onClose, onCreated }) {
     setBusy(true); setError('');
     try {
       await api.post('/admin/restaurants', form);
-      onCreated();
+      onCreated(form.name);
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create restaurant'));
     } finally {

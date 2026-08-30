@@ -3,6 +3,7 @@ import Modal from './Modal';
 function channelMeta(channel, tableLabel) {
   if (channel === 'online') return { label: 'Online', icon: '🌐' };
   if (channel === 'takeaway') return { label: 'Takeaway', icon: '🛒' };
+  if (channel === 'pos') return { label: 'POS · Staff', icon: '🛒' };
   return { label: 'Miis ' + tableLabel, icon: '📍' };
 }
 

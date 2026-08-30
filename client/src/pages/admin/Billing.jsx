@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 
@@ -9,6 +10,7 @@ const GATEWAYS = [
 ];
 
 export default function Billing() {
+  const { addToast, confirm } = useOutletContext();
   const [restaurants, setRestaurants] = useState([]);
   const [restaurantId, setRestaurantId] = useState('');
   const [accounts, setAccounts] = useState([]);
@@ -35,9 +37,18 @@ export default function Billing() {
   useEffect(loadAccounts, [restaurantId]);
 
   async function disconnect(accountId) {
-    if (!window.confirm('Ma hubtaa inaad ka saarto lacag-bixintan? · Disconnect this payment account?')) return;
-    await api.delete(`/admin/restaurants/${restaurantId}/payment-accounts/${accountId}`);
-    loadAccounts();
+    const ok = await confirm({
+      title: 'Ka saar lacag-bixintan · Disconnect this payment account?',
+      tone: 'danger', confirmLabel: 'Ka saar · Disconnect',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/restaurants/${restaurantId}/payment-accounts/${accountId}`);
+      loadAccounts();
+      addToast({ title: 'Lacag-bixinta waa laga saaray · Payment account disconnected', tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed to disconnect', body: apiErrorMessage(err), tone: 'error' });
+    }
   }
 
   return (
@@ -117,7 +128,14 @@ export default function Billing() {
           providerLabel={modalProvider.label}
           existing={modalProvider.existing}
           onClose={() => setModalProvider(null)}
-          onSaved={() => { setModalProvider(null); loadAccounts(); }}
+          onSaved={() => {
+            const wasEditing = !!modalProvider.existing;
+            setModalProvider(null); loadAccounts();
+            addToast({
+              title: wasEditing ? 'Isbeddelka waa la keydiyay · Changes saved' : 'Lacag-bixinta waa la xiray · Payment account connected',
+              tone: 'success',
+            });
+          }}
         />
       )}
     </div>

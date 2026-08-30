@@ -7,9 +7,11 @@ const Category = require('../models/Category');
 const Product = require('../models/Product');
 const Table = require('../models/Table');
 const Order = require('../models/Order');
+const PaymentAccount = require('../models/PaymentAccount');
 const { requireRestaurant } = require('../middleware/auth');
 const { makeTableCode } = require('../utils/codes');
 const { emitToRestaurant } = require('../socket');
+const { chargeOrderPayment } = require('../utils/chargeOrder');
 
 const router = express.Router();
 router.use(requireRestaurant);
@@ -222,6 +224,111 @@ router.post('/orders/simulate', async (req, res) => {
   const payload = mapOrder(order.toObject());
   emitToRestaurant(req.auth.id, 'order:new', payload);
   res.status(201).json(payload);
+});
+
+// ---- POS (staff-taken orders) ----
+router.get('/pos/payment-options', async (req, res) => {
+  const accounts = await PaymentAccount.find({ restaurant: req.auth.id, status: 'active' }).lean();
+  res.json({
+    paymentOptions: accounts.map(a => ({ provider: a.provider, label: a.label || a.provider })),
+    defaultProvider: (accounts.find(a => a.isPrimary) || accounts[0])?.provider || null,
+  });
+});
+
+router.post('/pos/orders', async (req, res) => {
+  const { phone, note, items, paymentProvider, payNow, clientRequestId } = req.body || {};
+  const cleanPhone = String(phone || '').trim();
+  const cleanNote = String(note || '').trim();
+  if (!cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
+
+  const restaurant = await Restaurant.findById(req.auth.id);
+  const productIds = items.map(i => i.productId);
+  const products = await Product.find({ _id: { $in: productIds }, restaurant: req.auth.id, status: 'active' }).lean();
+  const productMap = new Map(products.map(p => [String(p._id), p]));
+
+  const orderItems = [];
+  for (const i of items) {
+    const p = productMap.get(String(i.productId));
+    const qty = Math.max(1, Number(i.qty) || 1);
+    if (!p) continue;
+    orderItems.push({ name: p.nameEn, qty, price: p.price });
+  }
+  if (!orderItems.length) return res.status(400).json({ error: 'No valid items in cart' });
+
+  const total = orderItems.reduce((a, i) => a + i.price * i.qty, 0);
+
+  async function bumpSold() {
+    await Product.bulkWrite(items.map(i => ({
+      updateOne: { filter: { _id: i.productId }, update: { $inc: { sold: Math.max(1, Number(i.qty) || 1) } } },
+    })));
+  }
+
+  // Manual order: staff collects payment at the till, no online charge.
+  if (!payNow) {
+    const number = restaurant.nextOrderNumber();
+    await restaurant.save();
+    const order = await Order.create({
+      restaurant: req.auth.id, number, channel: 'pos',
+      phone: cleanPhone, note: cleanNote, items: orderItems, total, status: 'new',
+    });
+    await bumpSold();
+    const payload = mapOrder(order.toObject());
+    emitToRestaurant(req.auth.id, 'order:new', payload);
+    return res.status(201).json(payload);
+  }
+
+  const paymentAccounts = await PaymentAccount.find({ restaurant: req.auth.id, status: 'active' }).lean();
+  let account;
+  if (paymentProvider) {
+    account = paymentAccounts.find(a => a.provider === paymentProvider);
+    if (!account) return res.status(400).json({ error: 'Selected payment provider is not available' });
+  } else if (paymentAccounts.length === 1) {
+    account = paymentAccounts[0];
+  } else {
+    return res.status(400).json({ error: paymentAccounts.length ? 'paymentProvider is required' : 'No payment provider connected' });
+  }
+
+  let order = null;
+  if (clientRequestId) {
+    order = await Order.findOne({ restaurant: req.auth.id, 'payment.clientRequestId': clientRequestId });
+  }
+  if (order && order.payment?.status === 'paid') {
+    return res.status(201).json(mapOrder(order.toObject()));
+  }
+  if (!order) {
+    const number = restaurant.nextOrderNumber();
+    await restaurant.save();
+    order = await Order.create({
+      restaurant: req.auth.id, number, channel: 'pos',
+      phone: cleanPhone, note: cleanNote, items: orderItems, total, status: 'new',
+      payment: {
+        method: 'waafipay', provider: account.provider, status: 'pending',
+        amount: total, currency: account.currency, clientRequestId: clientRequestId || null,
+      },
+    });
+    await bumpSold();
+  }
+
+  const result = await chargeOrderPayment(order, account, { phone: cleanPhone });
+  if (result.outcome === 'paid') {
+    const payload = mapOrder(order.toObject());
+    emitToRestaurant(req.auth.id, 'order:new', payload);
+    return res.status(201).json(payload);
+  }
+  return res.status(402).json(result.body);
+});
+
+router.post('/pos/orders/:id/pay-at-table', async (req, res) => {
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Already paid' });
+  order.payment.method = 'pay_at_table';
+  order.payment.status = 'none';
+  await order.save();
+  const payload = mapOrder(order.toObject());
+  emitToRestaurant(req.auth.id, 'order:new', payload);
+  res.json(payload);
 });
 
 // ---- Sales ----

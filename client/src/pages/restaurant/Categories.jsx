@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import { Pencil, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 
@@ -15,6 +17,7 @@ function hueFor(str) {
 }
 
 export default function Categories() {
+  const { addToast, confirm } = useOutletContext();
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,15 +38,24 @@ export default function Categories() {
 
   async function removeCategory(c) {
     if (countFor(c.id) > 0) {
-      window.alert('Qaybtan waxay leedahay cuntooyin · Move or delete its products first.');
+      addToast({
+        title: 'Qaybtan waxay leedahay cuntooyin · Category is not empty',
+        body: 'Marka hore u wareeji ama tirtir cuntooyinkeeda · Move or delete its products first.',
+        tone: 'error',
+      });
       return;
     }
-    if (!window.confirm(`Ma hubtaa inaad tirtirto "${c.en}"? · Delete this category?`)) return;
+    const ok = await confirm({
+      title: `Tirtir "${c.en}" · Delete this category?`,
+      tone: 'danger', confirmLabel: 'Tirtir · Delete',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/restaurant/categories/${c.id}`);
       setCategories((prev) => prev.filter((x) => x.id !== c.id));
+      addToast({ title: 'Qaybta waa la tirtiray · Category deleted', tone: 'success' });
     } catch (err) {
-      window.alert(apiErrorMessage(err, 'Failed to delete category'));
+      addToast({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
     }
   }
 
@@ -84,7 +96,7 @@ export default function Categories() {
                   <div
                     style={{
                       width: 46, height: 46, borderRadius: 12, flex: '0 0 auto', fontSize: 21,
-                      background: `hsl(${hue} 65% 95%)`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: `hsl(${hue} 65% 50% / .16)`, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
                   >
                     {iconFor(c.en)}
@@ -109,13 +121,13 @@ export default function Categories() {
                     className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                     onClick={() => setEditCat(c)}
                   >
-                    ✎ Edit
+                    <Pencil size={13} strokeWidth={2.25} /> Edit
                   </button>
                   <button
                     title="Tirtir · Delete" onClick={() => removeCategory(c)}
-                    style={{ width: 34, height: 34, flex: '0 0 auto', borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13 }}
+                    style={{ width: 34, height: 34, flex: '0 0 auto', borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
-                    🗑
+                    <Trash2 size={14} strokeWidth={2.25} />
                   </button>
                 </div>
               </div>
@@ -130,7 +142,10 @@ export default function Categories() {
           submitLabel="Ku dar · Add"
           onClose={() => setShowAdd(false)}
           onSubmit={(form) => api.post('/restaurant/categories', form)}
-          onDone={(c) => { setCategories((prev) => [...prev, c]); setShowAdd(false); }}
+          onDone={(c) => {
+            setCategories((prev) => [...prev, c]); setShowAdd(false);
+            addToast({ title: 'Qaybta waa la daray · Category added', body: c.en, tone: 'success' });
+          }}
         />
       )}
       {editCat && (
@@ -140,7 +155,10 @@ export default function Categories() {
           initial={{ nameEn: editCat.en, nameSo: editCat.so }}
           onClose={() => setEditCat(null)}
           onSubmit={(form) => api.patch(`/restaurant/categories/${editCat.id}`, form)}
-          onDone={(c) => { setCategories((prev) => prev.map((x) => (x.id === c.id ? c : x))); setEditCat(null); }}
+          onDone={(c) => {
+            setCategories((prev) => prev.map((x) => (x.id === c.id ? c : x))); setEditCat(null);
+            addToast({ title: 'Isbeddelka waa la keydiyay · Changes saved', body: c.en, tone: 'success' });
+          }}
         />
       )}
     </div>

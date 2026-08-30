@@ -6,8 +6,7 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const PaymentAccount = require('../models/PaymentAccount');
 const { emitToRestaurant } = require('../socket');
-const { decrypt } = require('../utils/crypto');
-const waafipay = require('../utils/waafipay');
+const { chargeOrderPayment } = require('../utils/chargeOrder');
 
 function mapOrderPayload(order) {
   return {
@@ -289,66 +288,12 @@ router.post('/orders', async (req, res) => {
     await bumpSold();
   }
 
-  order.payment.referenceId = String(order._id);
-  order.payment.invoiceId = 'INV-' + order._id;
-  order.payment.status = 'pending';
-  order.payment.provider = account.provider;
-  order.payment.amount = total;
-  order.payment.currency = account.currency;
-  await order.save();
-
-  const decryptedAccount = {
-    baseUrl: account.baseUrl,
-    merchantUid: account.merchantUid,
-    apiUserId: decrypt(account.apiUserId),
-    apiKey: decrypt(account.apiKey),
-    currency: account.currency,
-  };
-
-  const result = await waafipay.chargePurchase(decryptedAccount, {
-    referenceId: order.payment.referenceId,
-    invoiceId: order.payment.invoiceId,
-    amount: total,
-    phone: cleanPhone,
-    description: `Order #${order.number}`,
-  });
-
-  if (result.ok) {
-    order.payment.status = 'paid';
-    order.payment.transactionId = result.transactionId;
-    order.payment.issuerTransactionId = result.issuerTransactionId;
-    order.payment.paidAt = new Date();
-    await order.save();
+  const result = await chargeOrderPayment(order, account, { phone: cleanPhone });
+  if (result.outcome === 'paid') {
     emitToRestaurant(restaurant._id, 'order:new', mapOrderPayload(order));
     return res.status(201).json({ id: order._id, number: order.number, payment: { status: 'paid' } });
   }
-
-  if (result.timeout) {
-    order.payment.status = 'timeout';
-    await order.save();
-    return res.status(402).json({
-      error: 'Lama xaqiijin lacag-bixinta · Payment could not be confirmed in time',
-      orderId: order._id, allowRetry: false, allowPayAtTable: true, needsManualVerification: true,
-    });
-  }
-
-  if (result.networkError) {
-    order.payment.status = 'failed';
-    await order.save();
-    return res.status(402).json({
-      error: 'Adeegga lacag-bixinta lama gaarin · Could not reach the payment provider, please try again',
-      orderId: order._id, allowRetry: true, allowPayAtTable: true,
-    });
-  }
-
-  order.payment.status = 'declined';
-  order.payment.failureReason = result.raw?.responseMsg || result.state || null;
-  await order.save();
-  return res.status(402).json({
-    error: 'Lacagta lama aqbalin · Payment was declined',
-    orderId: order._id, allowRetry: true, allowPayAtTable: true,
-    reason: order.payment.failureReason,
-  });
+  return res.status(402).json(result.body);
 });
 
 /**

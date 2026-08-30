@@ -4,7 +4,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { api } from '../../lib/api';
 
 export default function QrTab() {
-  const { me } = useOutletContext();
+  const { me, addToast } = useOutletContext();
   const [tables, setTables] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -29,6 +29,7 @@ export default function QrTab() {
       setTables((prev) => (prev.some((t) => t.id === data.id) ? prev : [...prev, data]));
       setSelectedId(data.id);
       setNewTableName('');
+      addToast({ title: 'Miiska waa la daray · Table added', body: 'Miis ' + data.label, tone: 'success' });
     } finally { setBusy(false); }
   }
 

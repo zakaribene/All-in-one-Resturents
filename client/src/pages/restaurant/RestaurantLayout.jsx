@@ -1,23 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, UtensilsCrossed, FolderOpen, QrCode } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ProfileMenu from '../../components/ProfileMenu';
 import NotificationBell from '../../components/NotificationBell';
 import ThemeToggle from '../../components/ThemeToggle';
 import ToastStack from '../../components/ToastStack';
+import { useConfirm } from '../../components/useConfirm';
 import { api } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { playBeep } from '../../lib/toast';
 import { useToasts } from '../../lib/useToasts';
 
 const NAV = [
-  { id: 'overview', so: 'Guudmar', en: 'Dashboard', ic: '⌂' },
-  { id: 'orders', so: 'Dalabyada', en: 'Orders', ic: '▤' },
-  { id: 'payments', so: 'Lacag-bixinada', en: 'Payments', ic: '💳' },
-  { id: 'products', so: 'Cuntooyinka', en: 'Products', ic: '◈' },
-  { id: 'categories', so: 'Qaybaha', en: 'Categories', ic: '≡' },
-  { id: 'qr', so: 'QR Codes', en: 'QR Codes', ic: '▦' },
+  { id: 'overview', so: 'Guudmar', en: 'Dashboard', icon: LayoutDashboard },
+  { id: 'orders', so: 'Dalabyada', en: 'Orders', icon: ClipboardList },
+  { id: 'pos', so: 'Dalab macmiil', en: 'POS', icon: ShoppingCart },
+  { id: 'payments', so: 'Lacag-bixinada', en: 'Payments', icon: CreditCard },
+  { id: 'products', so: 'Cuntooyinka', en: 'Products', icon: UtensilsCrossed },
+  { id: 'categories', so: 'Qaybaha', en: 'Categories', icon: FolderOpen },
+  { id: 'qr', so: 'QR Codes', en: 'QR Codes', icon: QrCode },
 ];
 
 export default function RestaurantLayout() {
@@ -29,6 +32,7 @@ export default function RestaurantLayout() {
   const [notifications, setNotifications] = useState([]);
   const [ringing, setRinging] = useState(false);
   const { toasts, addToast, dismissToast } = useToasts();
+  const { confirm, confirmNode } = useConfirm();
   const soundOnRef = useRef(soundOn);
   soundOnRef.current = soundOn;
   const active = NAV.find((n) => location.pathname.includes(n.id))?.id || null;
@@ -117,10 +121,11 @@ export default function RestaurantLayout() {
           onSelect={(id) => navigate('/dashboard/' + id)}
         />
         <main className="main-area tight">
-          <Outlet context={{ me, setMe, soundOn, setSoundOn }} />
+          <Outlet context={{ me, setMe, soundOn, setSoundOn, addToast, confirm }} />
         </main>
       </div>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      {confirmNode}
     </div>
   );
 }

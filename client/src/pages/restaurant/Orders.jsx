@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { api } from '../../lib/api';
+import { Bell, Search, StickyNote, Play, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart } from 'lucide-react';
+import { api, apiErrorMessage } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
 
 function channelMeta(channel, tableLabel) {
-  if (channel === 'online') return { label: 'Online', icon: '🌐', bg: 'var(--purple-bg)', fg: 'var(--purple)' };
-  if (channel === 'takeaway') return { label: 'Takeaway', icon: '🛒', bg: 'var(--border-soft)', fg: 'var(--muted-4)' };
-  return { label: 'Miis ' + tableLabel, icon: '📍', bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))', fg: 'var(--accent)' };
+  if (channel === 'online') return { label: 'Online', Icon: Globe, bg: 'var(--purple-bg)', fg: 'var(--purple)' };
+  if (channel === 'takeaway') return { label: 'Takeaway', Icon: ShoppingBag, bg: 'var(--border-soft)', fg: 'var(--muted-4)' };
+  if (channel === 'pos') return { label: 'POS · Staff', Icon: ShoppingCart, bg: 'var(--warning-bg)', fg: 'var(--warning-fg)' };
+  return { label: 'Miis ' + tableLabel, Icon: MapPin, bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))', fg: 'var(--accent)' };
 }
 
 const STATUS_META = {
@@ -41,7 +43,7 @@ function timeAgo(date) {
 }
 
 export default function Orders() {
-  const { me, soundOn, setSoundOn } = useOutletContext();
+  const { me, soundOn, setSoundOn, addToast, confirm } = useOutletContext();
   const [orders, setOrders] = useState([]);
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [tab, setTab] = useState('all');
@@ -73,9 +75,15 @@ export default function Orders() {
     setOrders((prev) => prev.map((o) => (o.id === id ? data : o)));
   }
   async function removeOrder(id) {
-    if (!window.confirm('Ma hubtaa inaad tirtirto dalabkan? · Delete this order?')) return;
-    await api.delete(`/restaurant/orders/${id}`);
-    setOrders((prev) => prev.filter((o) => o.id !== id));
+    const ok = await confirm({ title: 'Tirtir dalabkan · Delete this order?', tone: 'danger', confirmLabel: 'Tirtir · Delete' });
+    if (!ok) return;
+    try {
+      await api.delete(`/restaurant/orders/${id}`);
+      setOrders((prev) => prev.filter((o) => o.id !== id));
+      addToast({ title: 'Dalabka waa la tirtiray · Order deleted', tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
+    }
   }
   async function simulate() {
     setSimulateError('');
@@ -124,9 +132,9 @@ export default function Orders() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setSoundOn((v) => !v)}>
-            <span style={{ fontSize: 15 }}>🔔</span> Sound: <b style={{ marginLeft: 2 }}>{soundOn ? 'On · Furan' : 'Off · Xiran'}</b>
+            <Bell size={14} strokeWidth={2.25} /> Sound: <b style={{ marginLeft: 2 }}>{soundOn ? 'On · Furan' : 'Off · Xiran'}</b>
           </button>
-          <button className="btn btn-primary btn-sm" onClick={simulate}>▶ Test order</button>
+          <button className="btn btn-primary btn-sm" onClick={simulate}><Play size={13} strokeWidth={2.25} /> Test order</button>
         </div>
       </div>
       {simulateError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{simulateError}</div>}
@@ -143,11 +151,14 @@ export default function Orders() {
             </button>
           ))}
         </div>
-        <input
-          className="field-input" style={{ maxWidth: 260 }}
-          placeholder="🔍 Raadi order, miis, taleefan…"
-          value={query} onChange={(e) => onQuery(e.target.value)}
-        />
+        <div style={{ position: 'relative', maxWidth: 260, flex: '1 1 220px' }}>
+          <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+          <input
+            className="field-input" style={{ paddingLeft: 32 }}
+            placeholder="Raadi order, miis, taleefan…"
+            value={query} onChange={(e) => onQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
@@ -165,12 +176,16 @@ export default function Orders() {
               </div>
               <div>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: m.bg, color: m.fg, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>
-                  {m.icon} {m.label}
+                  <m.Icon size={12} strokeWidth={2.5} /> {m.label}
                 </span>
               </div>
               <div style={{ color: 'var(--muted-5)' }}>
                 {o.items.map((i) => `${i.qty}× ${i.name}`).join('  ·  ')}
-                {o.note && <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 3 }}>📝 {o.note}</div>}
+                {o.note && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent)', marginTop: 3 }}>
+                    <StickyNote size={12} strokeWidth={2.25} /> {o.note}
+                  </div>
+                )}
               </div>
               <div className="mono">{o.phone}</div>
               <div style={{ fontWeight: 800 }}>${o.total.toFixed(2)}</div>
@@ -183,11 +198,15 @@ export default function Orders() {
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button className="btn-outline btn-sm" onClick={() => setReceiptOrder(o)}>View</button>
                 {o.status === 'new' && <button className="btn btn-primary btn-sm" onClick={() => accept(o.id)}>Aqbal · Accept</button>}
-                {o.status === 'preparing' && <button className="btn btn-ghost btn-sm" onClick={() => complete(o.id)}>Diyaar ✓</button>}
+                {o.status === 'preparing' && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => complete(o.id)}>
+                    Diyaar <Check size={13} strokeWidth={2.5} />
+                  </button>
+                )}
                 <button
                   title="Tirtir · Delete" onClick={() => removeOrder(o.id)}
-                  style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13 }}
-                >🗑</button>
+                  style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                ><Trash2 size={14} strokeWidth={2.25} /></button>
               </div>
             </div>
           );
