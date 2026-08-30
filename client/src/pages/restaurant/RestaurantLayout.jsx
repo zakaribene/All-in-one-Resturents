@@ -76,7 +76,7 @@ export default function RestaurantLayout() {
   }, [me?.id, addToast]);
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div className="app-root">
       <TopBar
         right={
           <>
@@ -97,7 +97,7 @@ export default function RestaurantLayout() {
           </>
         }
       />
-      <div className="app-shell" style={{ minHeight: 'calc(100vh - 60px)' }}>
+      <div className="app-shell">
         <Sidebar
           header={
             <div

@@ -110,16 +110,17 @@ input, select, textarea { font-family: inherit; }
 .pay-progress-bar { position: absolute; top: 0; left: 0; height: 100%; width: 34%; border-radius: 99px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: payBar 1.7s ease-in-out infinite; }
 
 /* ---------- layout ---------- */
-.app-shell { display: flex; min-height: 100vh; }
+.app-root { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.app-shell { display: flex; flex: 1; min-height: 0; }
 .sidebar {
   width: 246px; flex: 0 0 246px; background: var(--surface); border-right: 1px solid var(--border);
-  padding: 20px 16px; display: flex; flex-direction: column; gap: 3px;
+  padding: 20px 16px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto;
 }
 .sidebar-eyebrow {
   padding: 6px 10px 14px; font-size: 11px; font-weight: 800; letter-spacing: .08em;
   color: var(--muted-3); text-transform: uppercase;
 }
-.main-area { flex: 1; padding: 28px 34px; overflow: auto; }
+.main-area { flex: 1; min-width: 0; padding: 28px 34px; overflow-y: auto; }
 .main-area.tight { padding: 26px 32px; }
 
 .nav-item {

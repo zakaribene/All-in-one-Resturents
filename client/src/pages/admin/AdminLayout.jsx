@@ -32,7 +32,7 @@ export default function AdminLayout() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div className="app-root">
       <TopBar
         right={
           <>
@@ -52,7 +52,7 @@ export default function AdminLayout() {
           </>
         }
       />
-      <div className="app-shell" style={{ minHeight: 'calc(100vh - 60px)' }}>
+      <div className="app-shell">
         <Sidebar
           eyebrow="Admin Console"
           navItems={NAV}
