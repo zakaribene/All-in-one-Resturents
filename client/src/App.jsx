@@ -7,6 +7,7 @@ import Overview from './pages/admin/Overview';
 import Restaurants from './pages/admin/Restaurants';
 import Notifications from './pages/admin/Notifications';
 import Billing from './pages/admin/Billing';
+import AdminSms from './pages/admin/Sms';
 import AdminSettings from './pages/admin/Settings';
 
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
@@ -14,6 +15,7 @@ import RestaurantOverview from './pages/restaurant/Overview';
 import Orders from './pages/restaurant/Orders';
 import Pos from './pages/restaurant/Pos';
 import Payments from './pages/restaurant/Payments';
+import RestaurantSms from './pages/restaurant/Sms';
 import Products from './pages/restaurant/Products';
 import Categories from './pages/restaurant/Categories';
 import QrTab from './pages/restaurant/QrTab';
@@ -51,6 +53,7 @@ export default function App() {
               <Route path="restaurants" element={<Restaurants />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="billing" element={<Billing />} />
+              <Route path="sms" element={<AdminSms />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
 
@@ -67,6 +70,7 @@ export default function App() {
               <Route path="orders" element={<Orders />} />
               <Route path="pos" element={<Pos />} />
               <Route path="payments" element={<Payments />} />
+              <Route path="sms" element={<RestaurantSms />} />
               <Route path="products" element={<Products />} />
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />

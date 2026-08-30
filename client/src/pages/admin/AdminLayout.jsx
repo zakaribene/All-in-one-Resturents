@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Bell, CreditCard, Settings } from 'lucide-react';
+import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -15,6 +15,7 @@ const NAV = [
   { id: 'restaurants', so: 'Maqaayadaha', en: 'Restaurants', icon: Store },
   { id: 'notifications', so: 'Fariimaha', en: 'Notifications', icon: Bell },
   { id: 'billing', so: 'Lacagta', en: 'Billing', icon: CreditCard },
+  { id: 'sms', so: 'SMS', en: 'SMS', icon: MessageSquare },
   { id: 'settings', so: 'Dejinta', en: 'Settings', icon: Settings },
 ];
 

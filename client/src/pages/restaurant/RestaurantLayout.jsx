@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, UtensilsCrossed, FolderOpen, QrCode } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, MessageSquare, UtensilsCrossed, FolderOpen, QrCode } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ProfileMenu from '../../components/ProfileMenu';
@@ -18,6 +18,7 @@ const NAV = [
   { id: 'orders', so: 'Dalabyada', en: 'Orders', icon: ClipboardList },
   { id: 'pos', so: 'Dalab macmiil', en: 'POS', icon: ShoppingCart },
   { id: 'payments', so: 'Lacag-bixinada', en: 'Payments', icon: CreditCard },
+  { id: 'sms', so: 'SMS', en: 'SMS', icon: MessageSquare },
   { id: 'products', so: 'Cuntooyinka', en: 'Products', icon: UtensilsCrossed },
   { id: 'categories', so: 'Qaybaha', en: 'Categories', icon: FolderOpen },
   { id: 'qr', so: 'QR Codes', en: 'QR Codes', icon: QrCode },

@@ -16,8 +16,8 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
       <div id="receipt-print" style={{ fontFamily: 'var(--mono)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 14 }}>
           <div style={{
-            width: 52, height: 52, borderRadius: 12, background: `hsl(${restaurant?.hue ?? 212} 65% 95%)`, color: `hsl(${restaurant?.hue ?? 212} 55% 42%)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22, marginBottom: 10, overflow: 'hidden',
+            width: 64, height: 64, borderRadius: 18, background: `hsl(${restaurant?.hue ?? 212} 65% 95%)`, color: `hsl(${restaurant?.hue ?? 212} 55% 42%)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 26, marginBottom: 10, overflow: 'hidden',
           }}>
             {restaurant?.logoUrl ? <img src={restaurant.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (restaurant?.name?.[0] || 'M')}
           </div>
@@ -45,9 +45,23 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
           ))}
         </div>
 
-        <div style={{ borderTop: '1px dashed var(--border-strong)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 15 }}>
-          <span>Total</span>
-          <span>${order.total.toFixed(2)}</span>
+        <div style={{ borderTop: '1px dashed var(--border-strong)', paddingTop: 10 }}>
+          {order.discount > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--muted-2)', marginBottom: 4 }}>
+                <span>Subtotal</span>
+                <span>${(order.total + order.discount).toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--danger)', marginBottom: 8 }}>
+                <span>Discount</span>
+                <span>−${order.discount.toFixed(2)}</span>
+              </div>
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 15 }}>
+            <span>Total</span>
+            <span>${order.total.toFixed(2)}</span>
+          </div>
         </div>
       </div>
 

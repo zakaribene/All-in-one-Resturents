@@ -105,7 +105,7 @@ export default function CustomerOrder() {
   async function placeOrder() {
     if (!phone.trim()) { setPhoneError(true); return; }
     setPlacing(true); setPlaceError(''); setDeclineInfo(null);
-    if (hasPayment) setStep('paying');
+    setStep(hasPayment ? 'paying' : 'sending');
     try {
       const items = Object.entries(cart).map(([productId, qty]) => ({ productId, qty }));
       const { data } = await api.post('/public/orders', {
@@ -326,6 +326,25 @@ export default function CustomerOrder() {
           <div style={{ fontSize: 14, color: 'var(--muted-1)', marginBottom: 4 }}>Confirm the payment prompt on {phone}</div>
           <div className="pay-progress"><div className="pay-progress-bar" /></div>
           <div style={{ fontSize: 12, color: 'var(--muted-3)', marginTop: 14 }}>Kani wuxuu qaadan karaa ilaa 45 sekend · This can take up to 45 seconds</div>
+        </div>
+      )}
+
+      {step === 'sending' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 26px', minHeight: '100vh' }}>
+          <div className="pay-ping-wrap">
+            <span className="pay-ping" />
+            <span className="pay-ping" style={{ animationDelay: '.8s' }} />
+            <span className="pay-ping" style={{ animationDelay: '1.6s' }} />
+            <div className="pay-icon">🧾</div>
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Dalabkaaga waa la diraynaa
+            <span className="pay-dots">
+              <span className="pay-dot" /><span className="pay-dot" /><span className="pay-dot" />
+            </span>
+          </div>
+          <div style={{ fontSize: 14, color: 'var(--muted-1)', marginBottom: 4 }}>Sending your order to the kitchen · {phone}</div>
+          <div className="pay-progress"><div className="pay-progress-bar" /></div>
         </div>
       )}
 

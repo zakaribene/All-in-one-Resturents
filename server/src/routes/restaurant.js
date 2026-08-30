@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -8,10 +9,14 @@ const Product = require('../models/Product');
 const Table = require('../models/Table');
 const Order = require('../models/Order');
 const PaymentAccount = require('../models/PaymentAccount');
+const SmsAccount = require('../models/SmsAccount');
+const SmsLog = require('../models/SmsLog');
 const { requireRestaurant } = require('../middleware/auth');
 const { makeTableCode } = require('../utils/codes');
 const { emitToRestaurant } = require('../socket');
 const { chargeOrderPayment } = require('../utils/chargeOrder');
+const { decrypt } = require('../utils/crypto');
+const { sendSms } = require('../utils/hormuud');
 
 const router = express.Router();
 router.use(requireRestaurant);
@@ -158,14 +163,17 @@ router.post('/tables', async (req, res) => {
 
 // ---- Orders ----
 router.get('/orders', async (req, res) => {
-  const orders = await Order.find({ restaurant: req.auth.id }).sort({ createdAt: -1 }).limit(200).lean();
+  const orders = await Order.find({
+    restaurant: req.auth.id,
+    $or: [{ 'payment.method': 'pay_at_table' }, { 'payment.status': 'paid' }],
+  }).sort({ createdAt: -1 }).limit(200).lean();
   res.json(orders.map(mapOrder));
 });
 
 function mapOrder(o) {
   return {
     id: o._id, number: o.number, channel: o.channel, tableLabel: o.tableLabel, phone: o.phone, note: o.note,
-    items: o.items, total: o.total, status: o.status, payment: o.payment, createdAt: o.createdAt,
+    items: o.items, total: o.total, discount: o.discount || 0, status: o.status, payment: o.payment, createdAt: o.createdAt,
   };
 }
 
@@ -191,7 +199,7 @@ router.get('/payments', async (req, res) => {
   const orders = await Order.find({ restaurant: req.auth.id, 'payment.method': 'waafipay' })
     .sort({ createdAt: -1 }).limit(300).lean();
   res.json(orders.map(o => ({
-    id: o._id, number: o.number, phone: o.phone, total: o.total, createdAt: o.createdAt,
+    id: o._id, number: o.number, phone: o.phone, total: o.total, createdAt: o.createdAt, updatedAt: o.updatedAt,
     payment: o.payment,
   })));
 });
@@ -236,7 +244,7 @@ router.get('/pos/payment-options', async (req, res) => {
 });
 
 router.post('/pos/orders', async (req, res) => {
-  const { phone, note, items, paymentProvider, payNow, clientRequestId } = req.body || {};
+  const { phone, note, items, paymentProvider, payNow, clientRequestId, discount } = req.body || {};
   const cleanPhone = String(phone || '').trim();
   const cleanNote = String(note || '').trim();
   if (!cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
@@ -256,7 +264,9 @@ router.post('/pos/orders', async (req, res) => {
   }
   if (!orderItems.length) return res.status(400).json({ error: 'No valid items in cart' });
 
-  const total = orderItems.reduce((a, i) => a + i.price * i.qty, 0);
+  const subtotal = orderItems.reduce((a, i) => a + i.price * i.qty, 0);
+  const discountAmount = Math.min(Math.max(0, Number(discount) || 0), subtotal);
+  const total = Math.round((subtotal - discountAmount) * 100) / 100;
 
   async function bumpSold() {
     await Product.bulkWrite(items.map(i => ({
@@ -270,7 +280,7 @@ router.post('/pos/orders', async (req, res) => {
     await restaurant.save();
     const order = await Order.create({
       restaurant: req.auth.id, number, channel: 'pos',
-      phone: cleanPhone, note: cleanNote, items: orderItems, total, status: 'new',
+      phone: cleanPhone, note: cleanNote, items: orderItems, total, discount: discountAmount, status: 'new',
     });
     await bumpSold();
     const payload = mapOrder(order.toObject());
@@ -301,7 +311,7 @@ router.post('/pos/orders', async (req, res) => {
     await restaurant.save();
     order = await Order.create({
       restaurant: req.auth.id, number, channel: 'pos',
-      phone: cleanPhone, note: cleanNote, items: orderItems, total, status: 'new',
+      phone: cleanPhone, note: cleanNote, items: orderItems, total, discount: discountAmount, status: 'new',
       payment: {
         method: 'waafipay', provider: account.provider, status: 'pending',
         amount: total, currency: account.currency, clientRequestId: clientRequestId || null,
@@ -344,6 +354,71 @@ router.get('/sales', async (req, res) => {
   const totRev = rows.reduce((a, r) => a + r.revenue, 0);
   const totSold = rows.reduce((a, r) => a + r.sold, 0);
   res.json({ rows, totRev, totSold });
+});
+
+// ---- SMS (Hormuud) ----
+router.get('/sms/status', async (req, res) => {
+  const account = await SmsAccount.findOne({ restaurant: req.auth.id }).lean();
+  if (!account) return res.json({ connected: false });
+  res.json({ connected: true, senderId: account.senderId, status: account.status });
+});
+
+router.get('/sms/recipients', async (req, res) => {
+  const rows = await Order.aggregate([
+    { $match: { restaurant: new mongoose.Types.ObjectId(req.auth.id) } },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: '$phone', orders: { $sum: 1 }, lastOrderNumber: { $first: '$number' }, lastOrderAt: { $first: '$createdAt' } } },
+    { $sort: { lastOrderAt: -1 } },
+    { $limit: 500 },
+  ]);
+  res.json(rows.map(r => ({ phone: r._id, orders: r.orders, lastOrderNumber: r.lastOrderNumber, lastOrderAt: r.lastOrderAt })));
+});
+
+router.post('/sms/send', async (req, res) => {
+  const { mode, phones, message } = req.body || {};
+  const cleanMessage = String(message || '').trim();
+  if (!cleanMessage) return res.status(400).json({ error: 'Message is required' });
+  if (cleanMessage.length > 1000) return res.status(400).json({ error: 'Message is too long' });
+
+  const account = await SmsAccount.findOne({ restaurant: req.auth.id, status: 'active' });
+  if (!account) return res.status(400).json({ error: 'SMS is not connected for this restaurant · Fadlan la xiriir maamulaha' });
+
+  let recipients;
+  if (mode === 'all') {
+    recipients = await Order.distinct('phone', { restaurant: req.auth.id });
+  } else {
+    if (!Array.isArray(phones) || !phones.length) return res.status(400).json({ error: 'Select at least one recipient' });
+    recipients = phones;
+  }
+  const uniquePhones = [...new Set(recipients.map(p => String(p || '').trim()).filter(Boolean))];
+  if (!uniquePhones.length) return res.status(400).json({ error: 'No valid recipients' });
+
+  const username = decrypt(account.username);
+  const password = decrypt(account.password);
+
+  let sent = 0;
+  let failed = 0;
+  const results = [];
+  for (const phone of uniquePhones) {
+    const result = await sendSms({ username, password, mobile: phone, message: cleanMessage, senderid: account.senderId });
+    if (result.ok) sent += 1; else failed += 1;
+    await SmsLog.create({
+      restaurant: req.auth.id, phone, message: cleanMessage,
+      status: result.ok ? 'sent' : 'failed',
+      providerMessageId: result.messageId || null,
+      error: result.ok ? null : `${result.description.so} · ${result.description.en}`,
+    });
+    results.push({ phone, ok: result.ok });
+  }
+  res.json({ total: uniquePhones.length, sent, failed, results });
+});
+
+router.get('/sms/logs', async (req, res) => {
+  const logs = await SmsLog.find({ restaurant: req.auth.id }).sort({ createdAt: -1 }).limit(200).lean();
+  res.json(logs.map(l => ({
+    id: l._id, phone: l.phone, message: l.message, status: l.status,
+    error: l.error, createdAt: l.createdAt,
+  })));
 });
 
 module.exports = router;

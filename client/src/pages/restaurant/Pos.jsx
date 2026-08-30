@@ -38,6 +38,7 @@ export default function Pos() {
   const [cat, setCat] = useState('all');
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState({});
+  const [discount, setDiscount] = useState('');
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState(false);
   const [note, setNote] = useState('');
@@ -79,7 +80,9 @@ export default function Pos() {
       .filter((l) => l.product);
   }, [cart, products]);
   const cartCount = cartLines.reduce((a, l) => a + l.qty, 0);
-  const total = cartLines.reduce((a, l) => a + l.product.price * l.qty, 0);
+  const subtotal = cartLines.reduce((a, l) => a + l.product.price * l.qty, 0);
+  const discountAmount = Math.min(Math.max(0, Number(discount) || 0), subtotal);
+  const total = subtotal - discountAmount;
 
   function addToCart(pid) { setCart((c) => ({ ...c, [pid]: (c[pid] || 0) + 1 })); }
   function decCart(pid) {
@@ -96,7 +99,7 @@ export default function Pos() {
   }
 
   function resetOrder() {
-    setCart({}); setPhone(''); setPhoneError(false); setNote(''); setStage('cart');
+    setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setNote(''); setStage('cart');
     setDeclineInfo(null); setPlaceError(''); setClientRequestId('');
   }
 
@@ -111,7 +114,7 @@ export default function Pos() {
       const crid = useOnlinePay ? (clientRequestId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))) : undefined;
       if (crid) setClientRequestId(crid);
       const { data } = await api.post('/restaurant/pos/orders', {
-        phone: phone.trim(), note: note.trim(), items,
+        phone: phone.trim(), note: note.trim(), items, discount: discountAmount,
         payNow: useOnlinePay, paymentProvider: useOnlinePay ? provider : undefined,
         clientRequestId: crid,
       }, { timeout: 50000 });
@@ -279,6 +282,23 @@ export default function Pos() {
                 </>
               )}
 
+              <label className="field-label">Dhimis · Discount ($)</label>
+              <input
+                type="number" min="0" step="0.01" className="field-input" style={{ marginBottom: 12 }}
+                placeholder="0.00" value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0 2px' }}>
+                <span style={{ color: 'var(--muted-2)', fontSize: 13 }}>Wadarta hoose · Subtotal</span>
+                <span style={{ fontSize: 13, color: 'var(--muted-2)' }}>${subtotal.toFixed(2)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '2px 0' }}>
+                  <span style={{ color: 'var(--danger)', fontSize: 13 }}>Dhimis · Discount</span>
+                  <span style={{ fontSize: 13, color: 'var(--danger)' }}>−${discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0 14px' }}>
                 <span style={{ color: 'var(--muted-1)', fontWeight: 600 }}>Wadarta · Total</span>
                 <span style={{ fontWeight: 800, fontSize: 20 }}>${total.toFixed(2)}</span>

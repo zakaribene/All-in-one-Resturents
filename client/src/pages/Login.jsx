@@ -29,7 +29,7 @@ export default function Login() {
     const restaurant = await restaurantLogin(username, password);
     setBusy(false);
     if (restaurant.ok) navigate('/dashboard/orders');
-    else setError('Isticmaale ama furaha sirta ayaa qalad · Invalid username or password');
+    else setError(restaurant.error || 'Isticmaale ama furaha sirta ayaa qalad · Invalid username or password');
   }
 
   return (

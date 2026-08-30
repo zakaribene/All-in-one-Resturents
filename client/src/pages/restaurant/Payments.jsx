@@ -33,6 +33,17 @@ function timeAgo(date) {
   return new Date(date).toLocaleDateString();
 }
 
+function formatDateTime(date) {
+  if (!date) return '—';
+  const d = new Date(date);
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+    + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+function paymentTime(row) {
+  return row.payment.status === 'paid' ? (row.payment.paidAt || row.updatedAt) : (row.updatedAt || row.createdAt);
+}
+
 export default function Payments() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,12 +105,14 @@ export default function Payments() {
               <div>
                 <div className="mono" style={{ fontWeight: 800 }}>#{r.number}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>{timeAgo(r.createdAt)}</div>
+                <div className="mono" style={{ fontSize: 10, color: 'var(--muted-3)', opacity: .75 }}>{formatDateTime(r.createdAt)}</div>
               </div>
               <div className="mono">{r.phone}</div>
               <div style={{ fontWeight: 800 }}>${r.total.toFixed(2)}</div>
               <div>
                 <span style={{ background: s.bg, color: s.fg, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>{s.label}</span>
                 {p.provider && <div style={{ fontSize: 11, color: 'var(--muted-3)', marginTop: 4, textTransform: 'uppercase' }}>{p.provider}</div>}
+                <div className="mono" style={{ fontSize: 10, color: 'var(--muted-3)', opacity: .75, marginTop: 3 }}>{formatDateTime(paymentTime(r))}</div>
               </div>
               <div style={{ color: 'var(--muted-5)', lineHeight: 1.4 }}>{description(p)}</div>
               <div style={{ textAlign: 'right' }}>

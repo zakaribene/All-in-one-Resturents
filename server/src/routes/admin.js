@@ -7,6 +7,7 @@ const Notification = require('../models/Notification');
 const Activity = require('../models/Activity');
 const AdminUser = require('../models/AdminUser');
 const PaymentAccount = require('../models/PaymentAccount');
+const SmsAccount = require('../models/SmsAccount');
 const { requireAdmin } = require('../middleware/auth');
 const { makeTableCode, slugify } = require('../utils/codes');
 const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
@@ -231,6 +232,51 @@ router.patch('/restaurants/:id/payment-accounts/:accountId', async (req, res) =>
 
 router.delete('/restaurants/:id/payment-accounts/:accountId', async (req, res) => {
   const account = await PaymentAccount.findOneAndDelete({ _id: req.params.accountId, restaurant: req.params.id });
+  if (!account) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+// ---- SMS account (Hormuud) ----
+function maskSmsAccount(a) {
+  return {
+    id: a._id, username: a.username ? '••••' + decrypt(a.username).slice(-3) : '',
+    senderId: a.senderId, status: a.status, createdAt: a.createdAt,
+  };
+}
+
+router.get('/restaurants/:id/sms-account', async (req, res) => {
+  const account = await SmsAccount.findOne({ restaurant: req.params.id }).lean();
+  res.json(account ? maskSmsAccount(account) : null);
+});
+
+router.post('/restaurants/:id/sms-account', async (req, res) => {
+  const { username, password, senderId } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'username and password are required' });
+  const restaurant = await Restaurant.findById(req.params.id);
+  if (!restaurant) return res.status(404).json({ error: 'Not found' });
+  const existing = await SmsAccount.findOne({ restaurant: restaurant._id });
+  if (existing) return res.status(409).json({ error: 'SMS already connected, edit or remove it first' });
+  const account = await SmsAccount.create({
+    restaurant: restaurant._id, username: encrypt(username), password: encrypt(password), senderId: senderId || '',
+  });
+  await Activity.create({ restaurant: restaurant._id, message: `${restaurant.name}: SMS connected`, dot: '#12A150' });
+  res.status(201).json({ id: account._id });
+});
+
+router.patch('/restaurants/:id/sms-account', async (req, res) => {
+  const account = await SmsAccount.findOne({ restaurant: req.params.id });
+  if (!account) return res.status(404).json({ error: 'Not found' });
+  const { username, password, senderId, status } = req.body || {};
+  if (username) account.username = encrypt(username);
+  if (password) account.password = encrypt(password);
+  if (senderId != null) account.senderId = senderId;
+  if (status && ['active', 'disabled'].includes(status)) account.status = status;
+  await account.save();
+  res.json({ ok: true });
+});
+
+router.delete('/restaurants/:id/sms-account', async (req, res) => {
+  const account = await SmsAccount.findOneAndDelete({ restaurant: req.params.id });
   if (!account) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
 });

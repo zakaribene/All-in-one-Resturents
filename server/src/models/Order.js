@@ -16,7 +16,7 @@ const PaymentSchema = new mongoose.Schema({
   invoiceId: { type: String, default: null },
   transactionId: { type: String, default: null },
   issuerTransactionId: { type: String, default: null },
-  clientRequestId: { type: String, default: null },
+  clientRequestId: { type: String, default: undefined },
   failureReason: { type: String, default: null },
   paidAt: { type: Date, default: null },
 }, { _id: false });
@@ -30,10 +30,14 @@ const OrderSchema = new mongoose.Schema({
   note: { type: String, default: '', trim: true },
   items: { type: [OrderItemSchema], required: true, validate: v => Array.isArray(v) && v.length > 0 },
   total: { type: Number, required: true, min: 0 },
+  discount: { type: Number, default: 0, min: 0 },
   status: { type: String, enum: ['new', 'preparing', 'done'], default: 'new' },
   payment: { type: PaymentSchema, default: () => ({}) },
 }, { timestamps: true });
 
-OrderSchema.index({ restaurant: 1, 'payment.clientRequestId': 1 }, { unique: true, sparse: true });
+OrderSchema.index(
+  { restaurant: 1, 'payment.clientRequestId': 1 },
+  { unique: true, partialFilterExpression: { 'payment.clientRequestId': { $type: 'string' } } },
+);
 
 module.exports = mongoose.model('Order', OrderSchema);

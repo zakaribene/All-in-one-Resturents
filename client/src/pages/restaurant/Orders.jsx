@@ -42,6 +42,12 @@ function timeAgo(date) {
   return mins + 'm ago';
 }
 
+function formatDateTime(date) {
+  const d = new Date(date);
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+    + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function Orders() {
   const { me, soundOn, setSoundOn, addToast, confirm } = useOutletContext();
   const [orders, setOrders] = useState([]);
@@ -173,6 +179,7 @@ export default function Orders() {
               <div>
                 <div className="mono" style={{ fontWeight: 800 }}>#{o.number}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>{timeAgo(o.createdAt)}</div>
+                <div className="mono" style={{ fontSize: 10, color: 'var(--muted-3)', opacity: .75 }}>{formatDateTime(o.createdAt)}</div>
               </div>
               <div>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: m.bg, color: m.fg, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>
