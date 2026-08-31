@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, MessageSquare, UtensilsCrossed, FolderOpen, QrCode } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ProfileMenu from '../../components/ProfileMenu';
@@ -12,17 +12,7 @@ import { api } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { playBeep } from '../../lib/toast';
 import { useToasts } from '../../lib/useToasts';
-
-const NAV = [
-  { id: 'overview', so: 'Guudmar', en: 'Dashboard', icon: LayoutDashboard },
-  { id: 'orders', so: 'Dalabyada', en: 'Orders', icon: ClipboardList },
-  { id: 'pos', so: 'Dalab macmiil', en: 'POS', icon: ShoppingCart },
-  { id: 'payments', so: 'Lacag-bixinada', en: 'Payments', icon: CreditCard },
-  { id: 'sms', so: 'SMS', en: 'SMS', icon: MessageSquare },
-  { id: 'products', so: 'Cuntooyinka', en: 'Products', icon: UtensilsCrossed },
-  { id: 'categories', so: 'Qaybaha', en: 'Categories', icon: FolderOpen },
-  { id: 'qr', so: 'QR Codes', en: 'QR Codes', icon: QrCode },
-];
+import { NAV_PAGES, STAFF_PAGE } from '../../lib/navPages';
 
 export default function RestaurantLayout() {
   const location = useLocation();
@@ -36,7 +26,16 @@ export default function RestaurantLayout() {
   const { confirm, confirmNode } = useConfirm();
   const soundOnRef = useRef(soundOn);
   soundOnRef.current = soundOn;
-  const active = NAV.find((n) => location.pathname.includes(n.id))?.id || null;
+
+  const isStaff = me?.role === 'staff';
+  const allPages = useMemo(() => [...NAV_PAGES, STAFF_PAGE], []);
+  const visibleNav = useMemo(() => {
+    if (!isStaff) return allPages;
+    return NAV_PAGES.filter((n) => me?.permissions?.includes(n.id));
+  }, [isStaff, me, allPages]);
+  const active = allPages.find((n) => location.pathname.includes(n.id))?.id || null;
+  const hasAccess = !me || !isStaff || !active || me.permissions?.includes(active);
+  const homeId = isStaff ? (NAV_PAGES.find((n) => me?.permissions?.includes(n.id))?.id || 'orders') : 'overview';
 
   useEffect(() => {
     api.get('/restaurant/me').then((r) => setMe(r.data));
@@ -103,7 +102,7 @@ export default function RestaurantLayout() {
           header={
             <div
               style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 8px 16px', cursor: 'pointer' }}
-              onClick={() => navigate('/dashboard/overview')}
+              onClick={() => navigate('/dashboard/' + homeId)}
             >
               <div style={{
                 width: 38, height: 38, borderRadius: 11, background: `hsl(${me?.hue ?? 212} 65% 95%)`, color: `hsl(${me?.hue ?? 212} 55% 42%)`,
@@ -114,15 +113,30 @@ export default function RestaurantLayout() {
               <div style={{ lineHeight: 1.2 }}>
                 <div style={{ fontWeight: 800, fontSize: 14 }}>{me?.name || 'Loading…'}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>{me?.city} · {me?.plan}</div>
+                {isStaff && (
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent)', marginTop: 2 }}>
+                    👤 {me.staffName || 'Staff'}
+                  </div>
+                )}
               </div>
             </div>
           }
-          navItems={NAV}
+          navItems={visibleNav}
           activeId={active}
           onSelect={(id) => navigate('/dashboard/' + id)}
         />
         <main className="main-area tight">
-          <Outlet context={{ me, setMe, soundOn, setSoundOn, addToast, confirm }} />
+          {hasAccess ? (
+            <Outlet context={{ me, setMe, soundOn, setSoundOn, addToast, confirm }} />
+          ) : (
+            <div className="card card-pad" style={{ textAlign: 'center', padding: 50, maxWidth: 460, margin: '40px auto' }}>
+              <ShieldAlert size={30} strokeWidth={1.75} color="var(--danger)" style={{ marginBottom: 12 }} />
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Fasax kuma lihid · No access</div>
+              <div style={{ color: 'var(--muted-1)', fontSize: 13 }}>
+                Ma lihid ogolaanshaha boggan · You don't have permission to view this page. La xiriir milkiilaha · Contact the restaurant owner.
+              </div>
+            </div>
+          )}
         </main>
       </div>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

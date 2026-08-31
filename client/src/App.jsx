@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useOutletContext } from 'react-router-dom';
 import { AdminAuthProvider, RestaurantAuthProvider, useAdminAuth, useRestaurantAuth } from './lib/AuthContext';
+import { NAV_PAGES } from './lib/navPages';
 
 import Login from './pages/Login';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -19,6 +20,7 @@ import RestaurantSms from './pages/restaurant/Sms';
 import Products from './pages/restaurant/Products';
 import Categories from './pages/restaurant/Categories';
 import QrTab from './pages/restaurant/QrTab';
+import Staff from './pages/restaurant/Staff';
 
 import CustomerOrder from './pages/customer/CustomerOrder';
 
@@ -30,6 +32,18 @@ function RequireAdmin({ children }) {
 function RequireRestaurant({ children }) {
   const { isAuthed } = useRestaurantAuth();
   return isAuthed ? children : <Navigate to="/" replace />;
+}
+
+// Lands on the first page the signed-in account is actually allowed to see —
+// 'orders' for the owner, or a staff account's first granted permission.
+function DashboardIndex() {
+  const { me } = useOutletContext();
+  if (!me) return null;
+  if (me.role === 'staff') {
+    const first = NAV_PAGES.find((p) => me.permissions?.includes(p.id));
+    return <Navigate to={first ? first.id : 'orders'} replace />;
+  }
+  return <Navigate to="orders" replace />;
 }
 
 export default function App() {
@@ -65,7 +79,7 @@ export default function App() {
                 </RequireRestaurant>
               }
             >
-              <Route index element={<Navigate to="orders" replace />} />
+              <Route index element={<DashboardIndex />} />
               <Route path="overview" element={<RestaurantOverview />} />
               <Route path="orders" element={<Orders />} />
               <Route path="pos" element={<Pos />} />
@@ -74,6 +88,7 @@ export default function App() {
               <Route path="products" element={<Products />} />
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />
+              <Route path="staff" element={<Staff />} />
             </Route>
 
             <Route path="/order/:code" element={<CustomerOrder />} />

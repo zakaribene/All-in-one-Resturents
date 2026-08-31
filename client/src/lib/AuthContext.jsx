@@ -43,7 +43,16 @@ export function RestaurantAuthProvider({ children }) {
       setRestaurant(data.restaurant);
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: apiErrorMessage(err, 'Login failed') };
+      // Not an owner account — try it as a staff login before giving up.
+      try {
+        const { data } = await api.post('/auth/staff/login', { username, password });
+        setAuthToken('restaurant', data.token);
+        setToken(data.token);
+        setRestaurant(data.restaurant);
+        return { ok: true };
+      } catch (staffErr) {
+        return { ok: false, error: apiErrorMessage(staffErr, apiErrorMessage(err, 'Login failed')) };
+      }
     }
   }, []);
 

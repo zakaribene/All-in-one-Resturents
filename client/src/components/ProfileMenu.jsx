@@ -31,6 +31,7 @@ export default function ProfileMenu({ me, setMe, onClose }) {
   }
 
   if (!me) return null;
+  const isStaff = me.role === 'staff';
 
   return (
     <div ref={panelRef} className="dropdown-panel" style={{ width: 320, borderRadius: 18 }}>
@@ -43,14 +44,16 @@ export default function ProfileMenu({ me, setMe, onClose }) {
           }}
         >
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,transparent 55%,rgba(14,26,43,.35))' }} />
-          <button
-            className="btn-outline btn-sm"
-            style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(255,255,255,.92)', fontSize: 11, padding: '5px 9px' }}
-            onClick={() => coverInput.current?.click()}
-            disabled={busy === 'cover'}
-          >
-            📷 {busy === 'cover' ? 'Uploading…' : 'Edit cover'}
-          </button>
+          {!isStaff && (
+            <button
+              className="btn-outline btn-sm"
+              style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(255,255,255,.92)', fontSize: 11, padding: '5px 9px' }}
+              onClick={() => coverInput.current?.click()}
+              disabled={busy === 'cover'}
+            >
+              📷 {busy === 'cover' ? 'Uploading…' : 'Edit cover'}
+            </button>
+          )}
           <input ref={coverInput} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload('cover', e.target.files?.[0])} />
         </div>
 
@@ -63,13 +66,15 @@ export default function ProfileMenu({ me, setMe, onClose }) {
             }}>
               {me.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me.name?.[0] || '·')}
             </div>
-            <button
-              className="btn btn-primary btn-sm"
-              style={{ position: 'absolute', bottom: -3, right: -3, width: 24, height: 24, borderRadius: 99, padding: 0, fontSize: 11 }}
-              onClick={() => logoInput.current?.click()}
-              disabled={busy === 'logo'}
-              title="Beddel logo · Edit logo"
-            >✎</button>
+            {!isStaff && (
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ position: 'absolute', bottom: -3, right: -3, width: 24, height: 24, borderRadius: 99, padding: 0, fontSize: 11 }}
+                onClick={() => logoInput.current?.click()}
+                disabled={busy === 'logo'}
+                title="Beddel logo · Edit logo"
+              >✎</button>
+            )}
             <input ref={logoInput} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload('logo', e.target.files?.[0])} />
           </div>
 
@@ -80,7 +85,11 @@ export default function ProfileMenu({ me, setMe, onClose }) {
           {error && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 10 }}>{error}</div>}
 
           <div style={{ borderTop: '1px solid var(--border-soft)', marginTop: 16, paddingTop: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--muted-1)' }}>Milkiile · Owner: <b style={{ color: 'var(--text)' }}>{me.ownerName || '—'}</b></div>
+            {isStaff ? (
+              <div style={{ fontSize: 12, color: 'var(--muted-1)' }}>Shaqaale · Staff: <b style={{ color: 'var(--text)' }}>{me.staffName || '—'}</b></div>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--muted-1)' }}>Milkiile · Owner: <b style={{ color: 'var(--text)' }}>{me.ownerName || '—'}</b></div>
+            )}
           </div>
 
           <button

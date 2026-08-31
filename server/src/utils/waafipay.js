@@ -1,29 +1,6 @@
 const crypto = require('crypto');
-const tls = require('tls');
-const { Agent, fetch } = require('undici');
-
-// Node's fetch (undici) doesn't read the Windows certificate store the way
-// Postman/browsers do. On machines where an antivirus or corporate proxy does
-// TLS inspection with a root cert that's only trusted at the OS level, plain
-// `fetch` fails with SELF_SIGNED_CERT_IN_CHAIN even though the endpoint is fine.
-// We merge Node's default trusted roots with the Windows trust store once,
-// lazily, and reuse a dedicated Agent for WaafiPay calls only.
-let winAgentPromise = null;
-function getDispatcher() {
-  if (process.platform !== 'win32') return undefined;
-  if (!winAgentPromise) {
-    winAgentPromise = new Promise((resolve) => {
-      const certs = [];
-      try {
-        const winca = require('win-ca');
-        winca({ format: winca.der2.pem, ondata: (c) => certs.push(c), onend: () => resolve(certs) });
-      } catch {
-        resolve(certs);
-      }
-    }).then((certs) => new Agent({ connect: { ca: [...tls.rootCertificates, ...certs] } }));
-  }
-  return winAgentPromise;
-}
+const { fetch } = require('undici');
+const { getWinCaDispatcher } = require('./winCaDispatcher');
 
 function normalizePhoneForWaafiPay(phone) {
   let digits = String(phone || '').replace(/[^\d]/g, '');
@@ -42,7 +19,7 @@ async function postToWaafiPay(baseUrl, body) {
   const timer = setTimeout(() => controller.abort(), 45000);
   const url = buildAsmUrl(baseUrl);
   try {
-    const dispatcher = await getDispatcher();
+    const dispatcher = await getWinCaDispatcher();
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

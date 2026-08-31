@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Send, Users, User, Plus, X, Download, Upload, FileSpreadsheet, CheckCircle2, PhoneCall } from 'lucide-react';
+import { Send, Users, User, Plus, X, Download, Upload, FileSpreadsheet, CheckCircle2, PhoneCall, Search, Trash2, RotateCcw } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 
@@ -30,6 +30,8 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+const PAGE_SIZE = 10;
+
 function parseCsvPhones(text) {
   const lines = text.split(/\r\n|\n|\r/).map((l) => l.trim()).filter(Boolean);
   const phones = [];
@@ -44,19 +46,20 @@ function parseCsvPhones(text) {
 }
 
 export default function Sms() {
-  const { addToast } = useOutletContext();
+  const { addToast, confirm } = useOutletContext();
   const [status, setStatus] = useState(null);
   const [recipients, setRecipients] = useState([]);
   const [logs, setLogs] = useState([]);
   const [mode, setMode] = useState('all');
   const [selected, setSelected] = useState({});
   const [customPhones, setCustomPhones] = useState([]);
-  const [manualPhone, setManualPhone] = useState('');
+  const [phoneQuery, setPhoneQuery] = useState('');
   const [importPreview, setImportPreview] = useState(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [historyPage, setHistoryPage] = useState(1);
   const fileInputRef = useRef(null);
 
   function loadLogs() {
@@ -74,6 +77,11 @@ export default function Sms() {
     }).finally(() => setLoading(false));
   }, []);
 
+  const historyTotalPages = Math.max(1, Math.ceil(logs.length / PAGE_SIZE));
+  const historyPageSafe = Math.min(historyPage, historyTotalPages);
+  const historyPageStart = (historyPageSafe - 1) * PAGE_SIZE;
+  const historyPageRows = logs.slice(historyPageStart, historyPageStart + PAGE_SIZE);
+
   const knownPhones = useMemo(() => new Set(recipients.map((r) => r.phone)), [recipients]);
   const allRecipients = useMemo(() => {
     const extra = customPhones.filter((p) => !knownPhones.has(p)).map((p) => ({ phone: p, manual: true }));
@@ -83,17 +91,24 @@ export default function Sms() {
   const selectedCount = useMemo(() => Object.values(selected).filter(Boolean).length, [selected]);
   const selectedPhones = useMemo(() => Object.keys(selected).filter((p) => selected[p]), [selected]);
 
+  const trimmedQuery = phoneQuery.trim();
+  const filteredRecipients = useMemo(() => {
+    if (!trimmedQuery) return allRecipients;
+    return allRecipients.filter((r) => r.phone.includes(trimmedQuery));
+  }, [allRecipients, trimmedQuery]);
+  const canAddQuery = trimmedQuery.length > 0 && trimmedQuery.replace(/\D/g, '').length >= 6 && !filteredRecipients.length;
+
   function toggleRecipient(phone) {
     setSelected((s) => ({ ...s, [phone]: !s[phone] }));
   }
 
   function addManualPhone() {
-    const p = manualPhone.trim();
+    const p = trimmedQuery;
     if (!p || p.replace(/\D/g, '').length < 6) { setError('Fadlan geli lambar sax ah · Enter a valid phone number'); return; }
     setError('');
     if (!knownPhones.has(p)) setCustomPhones((cur) => (cur.includes(p) ? cur : [...cur, p]));
     setSelected((s) => ({ ...s, [p]: true }));
-    setManualPhone('');
+    setPhoneQuery('');
   }
 
   function removeManualPhone(phone) {
@@ -134,6 +149,26 @@ export default function Sms() {
     setImportPreview(null);
   }
 
+  function resend(log) {
+    setMessage(log.message);
+    setMode('selected');
+    if (!knownPhones.has(log.phone)) setCustomPhones((cur) => (cur.includes(log.phone) ? cur : [...cur, log.phone]));
+    setSelected((s) => ({ ...s, [log.phone]: true }));
+    setError('');
+    addToast?.({ title: 'Fariintii waa la soo celiyay · Message loaded — review recipients and send', tone: 'info' });
+  }
+
+  async function deleteLog(id) {
+    const ok = await confirm({ title: 'Tirtir diiwaankan SMS-ka · Delete this SMS record?', tone: 'danger', confirmLabel: 'Tirtir · Delete' });
+    if (!ok) return;
+    try {
+      await api.delete(`/restaurant/sms/logs/${id}`);
+      setLogs((cur) => cur.filter((l) => l.id !== id));
+    } catch (err) {
+      addToast?.({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
+    }
+  }
+
   async function send() {
     setError('');
     if (!message.trim()) { setError('Fadlan qor fariinta · Message is required'); return; }
@@ -142,12 +177,21 @@ export default function Sms() {
     try {
       const phones = mode === 'selected' ? selectedPhones : undefined;
       const { data } = await api.post('/restaurant/sms/send', { mode, phones, message: message.trim() });
+      const allFailed = data.failed > 0 && data.sent === 0;
+      const someFailed = data.failed > 0 && data.sent > 0;
+      const firstError = data.results?.find((r) => !r.ok)?.error;
+      const title = allFailed
+        ? 'SMS-ka lama dirin · SMS failed to send'
+        : someFailed
+          ? 'SMS-ka qeyb ahaan ayaa la diray · Partially sent'
+          : 'SMS-ka waa la diray · SMS sent';
+      const counts = `${data.sent} guuleystay${data.failed ? ` · ${data.failed} fashilantay` : ''} (${data.total} total)`;
       addToast({
-        title: 'SMS-ka waa la diray · SMS sent',
-        body: `${data.sent} guuleystay${data.failed ? ` · ${data.failed} fashilantay` : ''} (${data.total} total)`,
-        tone: data.failed && !data.sent ? 'error' : 'success',
+        title,
+        body: firstError ? `${counts} — ${firstError}` : counts,
+        tone: data.failed ? 'error' : 'success',
       });
-      setMessage(''); setSelected({}); loadLogs();
+      setMessage(''); setSelected({}); setHistoryPage(1); loadLogs();
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to send SMS'));
     } finally {
@@ -187,13 +231,13 @@ export default function Sms() {
 
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>Taariikhda · History</div>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 2.4fr 1.3fr 1fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
-            <div>Phone</div><div>Message</div><div>Status</div><div>Time</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+            <div>Phone</div><div>Message</div><div>Status</div><div>Time</div><div style={{ textAlign: 'right' }}>Action</div>
           </div>
-          {logs.map((l) => {
+          {historyPageRows.map((l) => {
             const s = STATUS_META[l.status];
             return (
-              <div key={l.id} style={{ display: 'grid', gridTemplateColumns: '1.3fr 2.4fr 1.3fr 1fr', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+              <div key={l.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
                 <div className="mono">{l.phone}</div>
                 <div style={{ color: 'var(--muted-5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</div>
                 <div>
@@ -201,11 +245,30 @@ export default function Sms() {
                   {l.error && <div style={{ fontSize: 10, color: 'var(--muted-3)', marginTop: 3 }}>{l.error}</div>}
                 </div>
                 <div className="mono" style={{ fontSize: 11, color: 'var(--muted-3)' }}>{formatDateTime(l.createdAt)}</div>
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  <button type="button" title="Dib u dir · Resend" onClick={() => resend(l)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer' }}>
+                    <RotateCcw size={13} strokeWidth={2.25} />
+                  </button>
+                  <button type="button" title="Tirtir · Delete" onClick={() => deleteLog(l.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--danger)', cursor: 'pointer' }}>
+                    <Trash2 size={13} strokeWidth={2.25} />
+                  </button>
+                </div>
               </div>
             );
           })}
           {!logs.length && <div className="text-muted" style={{ padding: 30, textAlign: 'center' }}>Weli SMS lama dirin · No SMS sent yet.</div>}
         </div>
+
+        {!!logs.length && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, fontSize: 13, color: 'var(--muted-2)' }}>
+            <span>{`${historyPageStart + 1}–${Math.min(historyPageStart + PAGE_SIZE, logs.length)} of ${logs.length}`}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-outline btn-sm" disabled={historyPageSafe <= 1} onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}>‹</button>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28, height: 28, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 700 }}>{historyPageSafe}</span>
+              <button className="btn-outline btn-sm" disabled={historyPageSafe >= historyTotalPages} onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}>›</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div
@@ -238,24 +301,28 @@ export default function Sms() {
               <Users size={13} strokeWidth={2.25} /> Dhammaan · All ({recipients.length})
             </button>
             <button type="button" className={'chip' + (mode === 'selected' ? ' active' : '')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setMode('selected')}>
-              <User size={13} strokeWidth={2.25} /> Doorasho · Selected {selectedCount > 0 ? `(${selectedCount})` : ''}
+              <User size={13} strokeWidth={2.25} /> Individual {selectedCount > 0 ? `(${selectedCount})` : ''}
             </button>
           </div>
 
           {mode === 'selected' && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <div style={{ position: 'relative', marginBottom: 8 }}>
+                <Search size={14} strokeWidth={2.25} color="var(--muted-3)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 <input
-                  className="field-input" style={{ flex: 1 }}
-                  placeholder="Ku dar lambar cusub · Add a phone number"
-                  value={manualPhone}
-                  onChange={(e) => setManualPhone(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addManualPhone(); } }}
+                  className="field-input" style={{ width: '100%', paddingLeft: 34 }}
+                  placeholder="Raadi ama ku dar lambar · Search or add a number"
+                  value={phoneQuery}
+                  onChange={(e) => setPhoneQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && canAddQuery) { e.preventDefault(); addManualPhone(); } }}
                 />
-                <button type="button" className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={addManualPhone}>
-                  <Plus size={14} strokeWidth={2.5} /> Dar
-                </button>
               </div>
+
+              {canAddQuery && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 8 }} onClick={addManualPhone}>
+                  <Plus size={14} strokeWidth={2.5} /> "{trimmedQuery}" lama helin — ku dar · Not found — add it
+                </button>
+              )}
 
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <button type="button" className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={exportTemplate}>
@@ -267,30 +334,36 @@ export default function Sms() {
                 <input ref={fileInputRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }} onChange={onImportFile} />
               </div>
 
-              <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--border-soft)', borderRadius: 10 }}>
-                {allRecipients.map((r) => (
-                  <label key={r.phone} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
-                    borderBottom: '1px solid var(--border-soft)', fontSize: 13, cursor: 'pointer',
-                    background: selected[r.phone] ? 'color-mix(in srgb, var(--accent) 7%, transparent)' : 'transparent',
-                  }}>
-                    <input type="checkbox" checked={!!selected[r.phone]} onChange={() => toggleRecipient(r.phone)} />
-                    <PhoneCall size={12} strokeWidth={2.25} color="var(--muted-3)" />
-                    <span className="mono" style={{ flex: 1 }}>{r.phone}</span>
-                    {r.manual ? (
-                      <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)', padding: '2px 7px', borderRadius: 6 }}>Gacanta · Manual</span>
-                    ) : (
-                      <span style={{ fontSize: 11, color: 'var(--muted-3)' }}>#{r.lastOrderNumber} · {r.orders}x</span>
-                    )}
-                    {r.manual && (
-                      <button type="button" onClick={(e) => { e.preventDefault(); removeManualPhone(r.phone); }} style={{ display: 'flex', color: 'var(--muted-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-                        <X size={13} strokeWidth={2.25} />
-                      </button>
-                    )}
-                  </label>
-                ))}
-                {!allRecipients.length && <div className="text-muted" style={{ padding: 16, textAlign: 'center', fontSize: 12 }}>No order phone numbers yet.</div>}
-              </div>
+              {trimmedQuery && (
+                <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--border-soft)', borderRadius: 10 }}>
+                  {filteredRecipients.map((r) => (
+                    <label key={r.phone} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                      borderBottom: '1px solid var(--border-soft)', fontSize: 13, cursor: 'pointer',
+                      background: selected[r.phone] ? 'color-mix(in srgb, var(--accent) 7%, transparent)' : 'transparent',
+                    }}>
+                      <input type="checkbox" checked={!!selected[r.phone]} onChange={() => toggleRecipient(r.phone)} />
+                      <PhoneCall size={12} strokeWidth={2.25} color="var(--muted-3)" />
+                      <span className="mono" style={{ flex: 1 }}>{r.phone}</span>
+                      {r.manual ? (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)', padding: '2px 7px', borderRadius: 6 }}>Gacanta · Manual</span>
+                      ) : (
+                        <span style={{ fontSize: 11, color: 'var(--muted-3)' }}>#{r.lastOrderNumber} · {r.orders}x</span>
+                      )}
+                      {r.manual && (
+                        <button type="button" onClick={(e) => { e.preventDefault(); removeManualPhone(r.phone); }} style={{ display: 'flex', color: 'var(--muted-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                          <X size={13} strokeWidth={2.25} />
+                        </button>
+                      )}
+                    </label>
+                  ))}
+                  {!filteredRecipients.length && (
+                    <div className="text-muted" style={{ padding: 16, textAlign: 'center', fontSize: 12 }}>
+                      Lambar la mid ah lama helin · No matching number
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

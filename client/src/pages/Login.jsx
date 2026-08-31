@@ -12,7 +12,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   if (isAdminAuthed) return <Navigate to="/admin/overview" replace />;
-  if (isRestaurantAuthed) return <Navigate to="/dashboard/orders" replace />;
+  if (isRestaurantAuthed) return <Navigate to="/dashboard" replace />;
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -28,7 +28,7 @@ export default function Login() {
 
     const restaurant = await restaurantLogin(username, password);
     setBusy(false);
-    if (restaurant.ok) navigate('/dashboard/orders');
+    if (restaurant.ok) navigate('/dashboard');
     else setError(restaurant.error || 'Isticmaale ama furaha sirta ayaa qalad · Invalid username or password');
   }
 

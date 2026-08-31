@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const AdminUser = require('../models/AdminUser');
 const Restaurant = require('../models/Restaurant');
+const Staff = require('../models/Staff');
 const { signToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -31,6 +32,27 @@ router.post('/restaurant/login', async (req, res) => {
     restaurant: {
       id: restaurant._id, name: restaurant.name, city: restaurant.city, plan: restaurant.plan,
       hue: restaurant.hue, logoUrl: restaurant.logoUrl, coverUrl: restaurant.coverUrl,
+    },
+  });
+});
+
+router.post('/staff/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  const staff = await Staff.findOne({ username: String(username).trim().toLowerCase() }).populate('restaurant');
+  if (!staff || !staff.restaurant) return res.status(401).json({ error: 'Invalid credentials' });
+  if (staff.status === 'suspended') return res.status(403).json({ error: 'This staff account is suspended' });
+  if (staff.restaurant.status === 'suspended') return res.status(403).json({ error: 'This restaurant account is suspended' });
+  const ok = await bcrypt.compare(password, staff.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  const token = signToken({
+    role: 'staff', id: staff._id.toString(), restaurantId: staff.restaurant._id.toString(), permissions: staff.permissions,
+  });
+  res.json({
+    token,
+    restaurant: {
+      id: staff.restaurant._id, name: staff.restaurant.name, city: staff.restaurant.city, plan: staff.restaurant.plan,
+      hue: staff.restaurant.hue, logoUrl: staff.restaurant.logoUrl, coverUrl: staff.restaurant.coverUrl,
     },
   });
 });

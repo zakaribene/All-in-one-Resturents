@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../lib/api';
+import { useOutletContext } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
+import { api, apiErrorMessage } from '../../lib/api';
 
 const STATUS_META = {
   paid: { label: '✓ Guulaystay · Paid', bg: 'var(--success-bg)', fg: 'var(--success)' },
@@ -15,6 +17,8 @@ const TABS = [
   { id: 'paid', so: 'Guulaystay', en: 'Paid' },
   { id: 'notpaid', so: 'Fashilmay', en: 'Failed' },
 ];
+
+const PAGE_SIZE = 10;
 
 function description(p) {
   if (p.status === 'paid') return 'Lacagta si guul leh ayaa loo bixiyay · Payment completed successfully.';
@@ -45,14 +49,28 @@ function paymentTime(row) {
 }
 
 export default function Payments() {
+  const { addToast, confirm } = useOutletContext();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.get('/restaurant/payments').then((r) => setRows(r.data)).finally(() => setLoading(false));
   }, []);
+
+  async function removeRow(id) {
+    const ok = await confirm({ title: 'Tirtir diiwaankan · Delete this record?', tone: 'danger', confirmLabel: 'Tirtir · Delete' });
+    if (!ok) return;
+    try {
+      await api.delete(`/restaurant/orders/${id}`);
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      addToast({ title: 'Waa la tirtiray · Deleted', tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
+    }
+  }
 
   const counts = useMemo(() => ({
     all: rows.length,
@@ -70,6 +88,14 @@ export default function Payments() {
     });
   }, [rows, tab, query]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, totalPages);
+  const pageStart = (pageSafe - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  function onTab(id) { setTab(id); setPage(1); }
+  function onQuery(v) { setQuery(v); setPage(1); }
+
   return (
     <div>
       <div style={{ marginBottom: 22 }}>
@@ -80,7 +106,7 @@ export default function Payments() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {TABS.map((t) => (
-            <button key={t.id} className={'chip' + (tab === t.id ? ' active' : '')} onClick={() => setTab(t.id)}>
+            <button key={t.id} className={'chip' + (tab === t.id ? ' active' : '')} onClick={() => onTab(t.id)}>
               {t.so} · {t.en} {counts[t.id]}
             </button>
           ))}
@@ -88,7 +114,7 @@ export default function Payments() {
         <input
           className="field-input" style={{ maxWidth: 260 }}
           placeholder="🔍 Raadi order, taleefan…"
-          value={query} onChange={(e) => setQuery(e.target.value)}
+          value={query} onChange={(e) => onQuery(e.target.value)}
         />
       </div>
 
@@ -97,7 +123,7 @@ export default function Payments() {
           <div>Order</div><div>Phone</div><div>Amount</div><div>Status</div><div>Description</div><div style={{ textAlign: 'right' }}>Action</div>
         </div>
         {loading && <div className="text-muted" style={{ padding: 24 }}>Loading…</div>}
-        {!loading && filtered.map((r) => {
+        {!loading && pageRows.map((r) => {
           const p = r.payment;
           const s = STATUS_META[p.status] || STATUS_META.none;
           return (
@@ -116,17 +142,29 @@ export default function Payments() {
               </div>
               <div style={{ color: 'var(--muted-5)', lineHeight: 1.4 }}>{description(p)}</div>
               <div style={{ textAlign: 'right' }}>
-                {p.status !== 'paid' && (
-                  <a href={`tel:${r.phone}`} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', display: 'inline-block' }}>
-                    📞 Wac · Call
-                  </a>
-                )}
+                <button
+                  type="button" className="btn-danger-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => removeRow(r.id)}
+                >
+                  <Trash2 size={13} strokeWidth={2.25} /> Tirtir · Delete
+                </button>
               </div>
             </div>
           );
         })}
-        {!loading && !filtered.length && <div className="text-muted" style={{ padding: 30, textAlign: 'center' }}>Wax lacag-bixin ah lama helin · No payments found.</div>}
+        {!loading && !pageRows.length && <div className="text-muted" style={{ padding: 30, textAlign: 'center' }}>Wax lacag-bixin ah lama helin · No payments found.</div>}
       </div>
+
+      {!loading && !!filtered.length && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, fontSize: 13, color: 'var(--muted-2)' }}>
+          <span>{`${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, filtered.length)} of ${filtered.length}`}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-outline btn-sm" disabled={pageSafe <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</button>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28, height: 28, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 700 }}>{pageSafe}</span>
+            <button className="btn-outline btn-sm" disabled={pageSafe >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>›</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
