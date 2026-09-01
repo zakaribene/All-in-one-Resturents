@@ -1,7 +1,7 @@
 const { fetch } = require('undici');
 const { getWinCaDispatcher } = require('./winCaDispatcher');
 
-const SEND_URL = 'https://smsapi.hormuud.com/api/sms/Send';
+const DEFAULT_SEND_URL = 'https://smsapi.hormuud.com/api/sms/Send';
 
 // Codes per Hormuud's official SMS API documentation (RESPOND CODES table).
 const RESPONSE_MESSAGES = {
@@ -23,13 +23,14 @@ function describeCode(code, data) {
   return { so: `Khalad aan la garanayn (code: ${key || 'madhan'})`, en: `Unknown error (code: ${key || 'none'})` };
 }
 
-async function sendSms({ username, password, mobile, message, senderid, refid, validity }) {
+async function sendSms({ username, password, mobile, message, senderid, refid, validity, url }) {
+  const sendUrl = (url && String(url).trim()) || DEFAULT_SEND_URL;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   const auth = Buffer.from(`${username}:${password}`).toString('base64');
   try {
     const dispatcher = await getWinCaDispatcher();
-    const res = await fetch(SEND_URL, {
+    const res = await fetch(sendUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -50,7 +51,7 @@ async function sendSms({ username, password, mobile, message, senderid, refid, v
     try {
       data = JSON.parse(text);
     } catch {
-      console.error(`[hormuud] ${SEND_URL} returned non-JSON response (HTTP ${res.status}):`, text.slice(0, 500));
+      console.error(`[hormuud] ${sendUrl} returned non-JSON response (HTTP ${res.status}):`, text.slice(0, 500));
       return {
         ok: false, timeout: false, networkError: true, code: null,
         description: { so: 'Jawaabta Hormuud ma ahayn JSON sax ah', en: 'Hormuud returned an invalid (non-JSON) response' },
@@ -79,7 +80,7 @@ async function sendSms({ username, password, mobile, message, senderid, refid, v
         raw: null,
       };
     }
-    console.error(`[hormuud] request to ${SEND_URL} failed:`, err.cause || err);
+    console.error(`[hormuud] request to ${sendUrl} failed:`, err.cause || err);
     const detail = err.cause?.code || err.cause?.message || err.code || err.message || 'unknown';
     return {
       ok: false, timeout: false, networkError: true, code: null,

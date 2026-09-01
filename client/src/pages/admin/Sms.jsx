@@ -72,7 +72,7 @@ export default function Sms() {
               <div style={{ fontSize: 12, color: 'var(--muted-3)' }}>Loading…</div>
             ) : account ? (
               <div style={{ fontSize: 12, color: 'var(--muted-3)' }} className="mono">
-                {account.username} {account.senderId ? `· ${account.senderId}` : ''} · {account.status === 'active' ? 'Connected' : 'Disabled'}
+                {(account.provider || 'hormuud') === 'tabaarak' ? 'Tabaarak' : 'Hormuud'} · {account.username} {account.senderId ? `· ${account.senderId}` : ''} · {account.status === 'active' ? 'Connected' : 'Disabled'}
               </div>
             ) : (
               <div style={{ fontSize: 12, color: 'var(--muted-3)' }}>Not connected</div>
@@ -109,9 +109,18 @@ export default function Sms() {
 }
 
 function SmsAccountModal({ restaurantId, existing, onClose, onSaved }) {
-  const [form, setForm] = useState({ username: '', password: '', senderId: existing?.senderId || '' });
+  const [form, setForm] = useState({
+    provider: existing?.provider || 'hormuud',
+    username: '', password: '',
+    senderId: existing?.senderId || '',
+    apiUrl: existing?.apiUrl || '',
+  });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const API_PLACEHOLDER = form.provider === 'tabaarak'
+    ? 'https://sms.tabaarak.com'
+    : 'https://smsapi.hormuud.com/api/sms/Send';
 
   function set(k) { return (e) => setForm((f) => ({ ...f, [k]: e.target.value })); }
 
@@ -136,19 +145,41 @@ function SmsAccountModal({ restaurantId, existing, onClose, onSaved }) {
   return (
     <Modal onClose={onClose} width={440}>
       <form onSubmit={submit}>
-        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 18 }}>{existing ? 'Edit' : 'Connect'} · Hormuud SMS</div>
-        <label className="field-label">Hormuud Username</label>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 18 }}>{existing ? 'Edit' : 'Connect'} · SMS</div>
+        <label className="field-label">Bixiyaha · Provider</label>
+        <select
+          className="field-input" style={{ marginBottom: 14 }} value={form.provider}
+          onChange={(e) => setForm((f) => ({
+            ...f,
+            provider: e.target.value,
+            // reset URL to the new provider's default unless it was hand-edited
+            apiUrl: f.apiUrl === existing?.apiUrl || !f.apiUrl ? '' : f.apiUrl,
+          }))}
+        >
+          <option value="hormuud">Hormuud</option>
+          <option value="tabaarak">Tabaarak</option>
+        </select>
+        <label className="field-label">Username</label>
         <input
           className="field-input" style={{ marginBottom: 14 }} value={form.username} onChange={set('username')}
           placeholder={existing ? 'Leave blank to keep current' : ''}
         />
-        <label className="field-label">Hormuud Password</label>
+        <label className="field-label">Password</label>
         <input
           className="field-input" style={{ marginBottom: 14 }} type="text" value={form.password} onChange={set('password')}
           placeholder={existing ? 'Leave blank to keep current' : ''}
         />
-        <label className="field-label">Sender ID (optional)</label>
-        <input className="field-input" style={{ marginBottom: 14 }} value={form.senderId} onChange={set('senderId')} placeholder="e.g. Miis" />
+        {form.provider === 'hormuud' && (
+          <>
+            <label className="field-label">Sender ID (optional)</label>
+            <input className="field-input" style={{ marginBottom: 14 }} value={form.senderId} onChange={set('senderId')} placeholder="e.g. Miis" />
+          </>
+        )}
+        <label className="field-label">API URL</label>
+        <input
+          className="field-input" style={{ marginBottom: 14 }} value={form.apiUrl} onChange={set('apiUrl')}
+          placeholder={API_PLACEHOLDER}
+        />
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>

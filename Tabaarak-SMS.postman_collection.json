@@ -1,0 +1,98 @@
+{
+  "info": {
+    "name": "Tabaarak SMS Gateway",
+    "description": "Login -> Send SMS -> Check balance. Fill the collection variables `username` and `password` first (right-click collection > Edit > Variables). Run 'Login' first; it auto-saves the token for the other requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://sms.tabaarak.com" },
+    { "key": "username", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "testPhone", "value": "615093067" }
+  ],
+  "item": [
+    {
+      "name": "1. Login (SMSLogin)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const j = pm.response.json();",
+              "if (j && j.data && j.data.token) {",
+              "  pm.collectionVariables.set('token', j.data.token);",
+              "  console.log('Token saved. Account:', j.data.name, '| balance:', j.data.balance, '| type:', j.data.accountType);",
+              "} else {",
+              "  console.error('No token in response:', pm.response.text());",
+              "}",
+              "pm.test('login success', () => pm.expect(j.success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/Auth/SMSLogin", "host": ["{{baseUrl}}"], "path": ["Auth", "SMSLogin"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Name\": \"{{username}}\",\n  \"Password\": \"{{password}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Send SMS (sendsms)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const j = pm.response.json();",
+              "console.log('Response:', JSON.stringify(j));",
+              "pm.test('accepted', () => pm.expect(j.success).to.be.true);",
+              "console.log('NOTE: success:true only means Tabaarak accepted it. Now check the actual phone.');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/Sms/sendsms", "host": ["{{baseUrl}}"], "path": ["Sms", "sendsms"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"smsMessage\": \"Tijaabo Postman - Miis\",\n  \"mobile\": [\"{{testPhone}}\"]\n}"
+        }
+      }
+    },
+    {
+      "name": "2b. Send SMS - format 252...",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/Sms/sendsms", "host": ["{{baseUrl}}"], "path": ["Sms", "sendsms"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"smsMessage\": \"Tijaabo 252 format\",\n  \"mobile\": [\"252{{testPhone}}\"]\n}"
+        }
+      }
+    },
+    {
+      "name": "3. Get SMS Balance",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/sms/GetSmsBalance", "host": ["{{baseUrl}}"], "path": ["sms", "GetSmsBalance"] }
+      }
+    }
+  ]
+}

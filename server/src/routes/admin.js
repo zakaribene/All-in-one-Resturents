@@ -236,11 +236,17 @@ router.delete('/restaurants/:id/payment-accounts/:accountId', async (req, res) =
   res.json({ ok: true });
 });
 
-// ---- SMS account (Hormuud) ----
+// ---- SMS account (Hormuud / Tabaarak) ----
+const SMS_API_DEFAULTS = {
+  hormuud: 'https://smsapi.hormuud.com/api/sms/Send',
+  tabaarak: 'https://sms.tabaarak.com',
+};
+
 function maskSmsAccount(a) {
   return {
-    id: a._id, username: a.username ? '••••' + decrypt(a.username).slice(-3) : '',
-    senderId: a.senderId, status: a.status, createdAt: a.createdAt,
+    id: a._id, provider: a.provider || 'hormuud',
+    username: a.username ? '••••' + decrypt(a.username).slice(-3) : '',
+    senderId: a.senderId, apiUrl: a.apiUrl, status: a.status, createdAt: a.createdAt,
   };
 }
 
@@ -250,14 +256,17 @@ router.get('/restaurants/:id/sms-account', async (req, res) => {
 });
 
 router.post('/restaurants/:id/sms-account', async (req, res) => {
-  const { username, password, senderId } = req.body || {};
+  const { username, password, senderId, apiUrl, provider } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'username and password are required' });
+  const cleanProvider = ['hormuud', 'tabaarak'].includes(provider) ? provider : 'hormuud';
   const restaurant = await Restaurant.findById(req.params.id);
   if (!restaurant) return res.status(404).json({ error: 'Not found' });
   const existing = await SmsAccount.findOne({ restaurant: restaurant._id });
   if (existing) return res.status(409).json({ error: 'SMS already connected, edit or remove it first' });
   const account = await SmsAccount.create({
-    restaurant: restaurant._id, username: encrypt(username), password: encrypt(password), senderId: senderId || '',
+    restaurant: restaurant._id, provider: cleanProvider,
+    username: encrypt(username), password: encrypt(password), senderId: senderId || '',
+    apiUrl: (apiUrl && apiUrl.trim()) || SMS_API_DEFAULTS[cleanProvider],
   });
   await Activity.create({ restaurant: restaurant._id, message: `${restaurant.name}: SMS connected`, dot: '#12A150' });
   res.status(201).json({ id: account._id });
@@ -266,10 +275,14 @@ router.post('/restaurants/:id/sms-account', async (req, res) => {
 router.patch('/restaurants/:id/sms-account', async (req, res) => {
   const account = await SmsAccount.findOne({ restaurant: req.params.id });
   if (!account) return res.status(404).json({ error: 'Not found' });
-  const { username, password, senderId, status } = req.body || {};
+  const { username, password, senderId, apiUrl, provider, status } = req.body || {};
+  const providerChanged = ['hormuud', 'tabaarak'].includes(provider) && provider !== account.provider;
+  if (providerChanged) account.provider = provider;
   if (username) account.username = encrypt(username);
   if (password) account.password = encrypt(password);
   if (senderId != null) account.senderId = senderId;
+  if (apiUrl != null && apiUrl.trim()) account.apiUrl = apiUrl.trim();
+  else if (apiUrl != null || providerChanged) account.apiUrl = SMS_API_DEFAULTS[account.provider];
   if (status && ['active', 'disabled'].includes(status)) account.status = status;
   await account.save();
   res.json({ ok: true });

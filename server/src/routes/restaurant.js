@@ -19,6 +19,7 @@ const { emitToRestaurant } = require('../socket');
 const { chargeOrderPayment } = require('../utils/chargeOrder');
 const { decrypt } = require('../utils/crypto');
 const { sendSms } = require('../utils/hormuud');
+const tabaarak = require('../utils/tabaarak');
 
 const router = express.Router();
 router.use(requireRestaurantOrStaff);
@@ -363,11 +364,31 @@ router.get('/sales', requirePermission('overview'), async (req, res) => {
   res.json({ rows, totRev, totSold });
 });
 
-// ---- SMS (Hormuud) ----
+// ---- SMS (Hormuud / Tabaarak) ----
 router.get('/sms/status', requirePermission('sms'), async (req, res) => {
   const account = await SmsAccount.findOne({ restaurant: req.auth.id }).lean();
   if (!account) return res.json({ connected: false });
-  res.json({ connected: true, senderId: account.senderId, status: account.status });
+  res.json({
+    connected: true,
+    provider: account.provider || 'hormuud',
+    senderId: account.senderId,
+    status: account.status,
+    balanceSupported: (account.provider || 'hormuud') === 'tabaarak',
+  });
+});
+
+// Live SMS credit balance (Tabaarak only — Hormuud has no balance endpoint).
+router.get('/sms/balance', requirePermission('sms'), async (req, res) => {
+  const account = await SmsAccount.findOne({ restaurant: req.auth.id, status: 'active' });
+  if (!account) return res.status(400).json({ error: 'SMS is not connected for this restaurant' });
+  if ((account.provider || 'hormuud') !== 'tabaarak') return res.json({ supported: false });
+  const r = await tabaarak.getBalance({
+    baseUrl: account.apiUrl,
+    username: decrypt(account.username),
+    password: decrypt(account.password),
+  });
+  if (!r.ok) return res.status(502).json({ error: `${r.description.so} · ${r.description.en}` });
+  res.json({ supported: true, balance: r.balance, accountType: r.accountType });
 });
 
 router.get('/sms/recipients', requirePermission('sms'), async (req, res) => {
@@ -402,21 +423,39 @@ router.post('/sms/send', requirePermission('sms'), async (req, res) => {
 
   const username = decrypt(account.username);
   const password = decrypt(account.password);
+  const provider = account.provider || 'hormuud';
 
   let sent = 0;
   let failed = 0;
   const results = [];
-  for (const phone of uniquePhones) {
-    const result = await sendSms({ username, password, mobile: phone, message: cleanMessage, senderid: account.senderId });
-    if (result.ok) sent += 1; else failed += 1;
-    const errorText = result.ok ? null : `${result.description.so} · ${result.description.en}`;
-    await SmsLog.create({
-      restaurant: req.auth.id, phone, message: cleanMessage,
-      status: result.ok ? 'sent' : 'failed',
-      providerMessageId: result.messageId || null,
-      error: errorText,
+
+  if (provider === 'tabaarak') {
+    // Tabaarak takes every recipient in one request and returns an aggregate result.
+    const result = await tabaarak.sendSms({
+      baseUrl: account.apiUrl, username, password, message: cleanMessage, mobiles: uniquePhones,
     });
-    results.push({ phone, ok: result.ok, error: errorText });
+    const errorText = result.ok ? null : `${result.description.so} · ${result.description.en}`;
+    for (const phone of uniquePhones) {
+      if (result.ok) sent += 1; else failed += 1;
+      await SmsLog.create({
+        restaurant: req.auth.id, phone, message: cleanMessage,
+        status: result.ok ? 'sent' : 'failed', providerMessageId: null, error: errorText,
+      });
+      results.push({ phone, ok: result.ok, error: errorText });
+    }
+  } else {
+    for (const phone of uniquePhones) {
+      const result = await sendSms({ username, password, mobile: phone, message: cleanMessage, senderid: account.senderId, url: account.apiUrl });
+      if (result.ok) sent += 1; else failed += 1;
+      const errorText = result.ok ? null : `${result.description.so} · ${result.description.en}`;
+      await SmsLog.create({
+        restaurant: req.auth.id, phone, message: cleanMessage,
+        status: result.ok ? 'sent' : 'failed',
+        providerMessageId: result.messageId || null,
+        error: errorText,
+      });
+      results.push({ phone, ok: result.ok, error: errorText });
+    }
   }
   res.json({ total: uniquePhones.length, sent, failed, results });
 });

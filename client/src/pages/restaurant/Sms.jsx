@@ -48,6 +48,8 @@ function parseCsvPhones(text) {
 export default function Sms() {
   const { addToast, confirm } = useOutletContext();
   const [status, setStatus] = useState(null);
+  const [balance, setBalance] = useState(null); // { balance, accountType } | { error } | null
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const [recipients, setRecipients] = useState([]);
   const [logs, setLogs] = useState([]);
   const [mode, setMode] = useState('all');
@@ -66,6 +68,14 @@ export default function Sms() {
     api.get('/restaurant/sms/logs').then((r) => setLogs(r.data));
   }
 
+  function loadBalance() {
+    setBalanceLoading(true);
+    api.get('/restaurant/sms/balance')
+      .then((r) => setBalance(r.data?.supported ? r.data : null))
+      .catch((e) => setBalance({ error: apiErrorMessage(e, 'Balance check failed') }))
+      .finally(() => setBalanceLoading(false));
+  }
+
   useEffect(() => {
     setLoading(true);
     api.get('/restaurant/sms/status').then((r) => {
@@ -73,6 +83,7 @@ export default function Sms() {
       if (r.data.connected) {
         Promise.all([api.get('/restaurant/sms/recipients'), api.get('/restaurant/sms/logs')])
           .then(([rec, lg]) => { setRecipients(rec.data); setLogs(lg.data); });
+        if (r.data.balanceSupported) loadBalance();
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -192,6 +203,7 @@ export default function Sms() {
         tone: data.failed ? 'error' : 'success',
       });
       setMessage(''); setSelected({}); setHistoryPage(1); loadLogs();
+      if (status?.balanceSupported) loadBalance();
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to send SMS'));
     } finally {
@@ -212,7 +224,7 @@ export default function Sms() {
           <div style={{ fontSize: 32, marginBottom: 10 }}>📵</div>
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>SMS lama xirin · SMS not connected</div>
           <div style={{ color: 'var(--muted-1)', fontSize: 13 }}>
-            Fadlan la xiriir maamulaha si loo xiro Hormuud SMS · Please contact the platform admin to connect Hormuud SMS for your restaurant.
+            Fadlan la xiriir maamulaha si loo xiro SMS-ka · Please contact the platform admin to connect SMS for your restaurant.
           </div>
         </div>
       </div>
@@ -288,11 +300,37 @@ export default function Sms() {
           }}>
             <Send size={17} strokeWidth={2.25} />
           </div>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Dir fariin cusub · Send new SMS</div>
-            <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>Hormuud SMS · {status.senderId || 'active'}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>
+              {(status.provider || 'hormuud') === 'tabaarak' ? 'Tabaarak SMS' : 'Hormuud SMS'} · {status.senderId || 'active'}
+            </div>
           </div>
         </div>
+
+        {status.balanceSupported && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            padding: '10px 20px', borderBottom: '1px solid var(--border-soft)',
+            background: balance?.error ? 'var(--danger-bg)' : 'var(--panel)',
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: balance?.error ? 'var(--danger)' : 'var(--muted-2)' }}>
+              {balanceLoading
+                ? 'Haraaga la hubinayo… · Checking balance…'
+                : balance?.error
+                  ? `Haraaga lama helin · ${balance.error}`
+                  : balance
+                    ? `Haraaga · Balance: ${balance.balance}${balance.accountType ? ` (${balance.accountType})` : ''}`
+                    : 'Haraaga · Balance: —'}
+            </span>
+            <button
+              type="button" title="Cusboonaysii · Refresh" onClick={loadBalance} disabled={balanceLoading}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+            >
+              <RotateCcw size={12} strokeWidth={2.25} />
+            </button>
+          </div>
+        )}
 
         <div style={{ padding: 18 }}>
           <label className="field-label">Cidda loo diraayo · Recipients</label>
