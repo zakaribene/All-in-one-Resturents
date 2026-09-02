@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'sms', 'products', 'categories', 'qr'];
+const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'paymethods', 'transfers', 'expenses', 'reports', 'sms', 'products', 'categories', 'qr'];
 
 const StaffSchema = new mongoose.Schema({
   restaurant: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
@@ -14,6 +14,7 @@ const StaffSchema = new mongoose.Schema({
     validate: { validator: (v) => v.every((p) => PAGE_IDS.includes(p)), message: 'Invalid permission page id' },
   },
   status: { type: String, enum: ['active', 'suspended'], default: 'active' },
+  posPinHash: { type: String, default: null },
 }, { timestamps: true });
 
 StaffSchema.statics.PAGE_IDS = PAGE_IDS;

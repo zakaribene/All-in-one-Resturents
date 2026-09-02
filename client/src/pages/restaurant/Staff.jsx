@@ -130,7 +130,7 @@ export default function Staff() {
         <StaffModal
           title="Wax ka beddel shaqaale · Edit staff"
           submitLabel="Keydi · Save"
-          initial={{ name: editStaff.name, username: editStaff.username, role: editStaff.role, permissions: editStaff.permissions }}
+          initial={{ name: editStaff.name, username: editStaff.username, role: editStaff.role, permissions: editStaff.permissions, hasPosPin: editStaff.hasPosPin }}
           isEdit
           onClose={() => setEditStaff(null)}
           onSubmit={(form) => api.patch(`/restaurant/staff/${editStaff.id}`, form)}
@@ -150,6 +150,7 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(initial?.role || 'Waiter');
   const [permissions, setPermissions] = useState(initial?.permissions || []);
+  const [posPin, setPosPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -160,10 +161,12 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
   async function submit(e) {
     e.preventDefault();
     if (!isEdit && (!password || password.length < 6)) { setError('Furaha sirta waa in uu ka badan yahay 6 xaraf · Password must be at least 6 characters'); return; }
+    if (posPin && !/^\d{4}$/.test(posPin)) { setError('PIN-ku waa inuu ahaadaa 4 lambar · POS PIN must be exactly 4 digits'); return; }
     setBusy(true); setError('');
     try {
       const form = { name, username, role, permissions };
       if (password) form.password = password;
+      if (posPin) form.posPin = posPin;
       const { data } = await onSubmit(form);
       onDone(data);
     } catch (err) {
@@ -187,6 +190,19 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
 
         <label className="field-label">Furaha sirta · Password {isEdit && '(ka tag banaan si aan loo beddelin · leave blank to keep unchanged)'}</label>
         <input className="field-input" style={{ marginBottom: 14 }} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+
+        <label className="field-label">
+          PIN-ka POS · POS PIN (4 lambar){' '}
+          {isEdit && (initial?.hasPosPin
+            ? '— PIN waa la dejiyay; ka tag banaan si aan loo beddelin · set; leave blank to keep'
+            : '— weli lama dejin · not set yet')}
+        </label>
+        <input
+          className="field-input" style={{ marginBottom: 14, letterSpacing: '.3em', fontFamily: 'inherit' }}
+          type="text" inputMode="numeric" maxLength={4} placeholder="••••"
+          value={posPin} onChange={(e) => setPosPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          autoComplete="off"
+        />
 
         <label className="field-label">Boggaga uu geli karo · Pages this staff account can access</label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, border: '1px solid var(--border-soft)', borderRadius: 10, padding: 12 }}>

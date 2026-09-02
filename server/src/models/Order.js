@@ -19,6 +19,9 @@ const PaymentSchema = new mongoose.Schema({
   clientRequestId: { type: String, default: undefined },
   failureReason: { type: String, default: null },
   paidAt: { type: Date, default: null },
+  manualMethod: { type: mongoose.Schema.Types.ObjectId, ref: 'PaymentMethod', default: null },
+  manualMethodName: { type: String, default: null },
+  collectedByName: { type: String, default: null },
 }, { _id: false });
 
 const OrderSchema = new mongoose.Schema({

@@ -20,17 +20,30 @@ function timeAgo(date) {
 const STATUS_TONE = { new: 'var(--danger)', preparing: 'var(--warning-fg)', done: 'var(--success)' };
 const STATUS_BG = { new: 'var(--danger-bg)', preparing: 'var(--warning-bg)', done: 'var(--success-bg)' };
 
+const WALLET_TONES = [
+  { tone: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))' },
+  { tone: 'var(--success)', bg: 'var(--success-bg)' },
+  { tone: 'var(--purple)', bg: 'var(--purple-bg)' },
+  { tone: 'var(--warning-fg)', bg: 'var(--warning-bg)' },
+];
+
+const money = (n) => '$' + Number(n || 0).toFixed(2);
+
 export default function Overview() {
   const { me } = useOutletContext();
   const [orders, setOrders] = useState(null);
   const [products, setProducts] = useState(null);
+  const [methods, setMethods] = useState([]);
 
   useEffect(() => {
     api.get('/restaurant/orders').then((r) => setOrders(r.data));
     api.get('/restaurant/products').then((r) => setProducts(r.data));
+    api.get('/restaurant/payment-methods').then((r) => setMethods(r.data)).catch(() => setMethods([]));
   }, []);
 
   if (!orders || !products) return <div className="text-muted">Loading…</div>;
+
+  const totalWalletBalance = methods.reduce((a, m) => a + (m.balance || 0), 0);
 
   const isToday = (d) => new Date(d).toDateString() === new Date().toDateString();
   const todayOrders = orders.filter((o) => isToday(o.createdAt));
@@ -87,6 +100,45 @@ export default function Overview() {
           </div>
         ))}
       </div>
+
+      {!!methods.length && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Xisaabaadka lacagta · Wallet balances</div>
+              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>Hadhaaga guud ee hab kasta · All-time balance of each payment method</div>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted-2)' }}>
+              Wadarta guud · Total <b style={{ color: 'var(--text)' }}>{money(totalWalletBalance)}</b>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 16 }}>
+            {methods.map((m, i) => {
+              const t = WALLET_TONES[i % WALLET_TONES.length];
+              return (
+                <div className="card card-pad" key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, opacity: m.status === 'active' ? 1 : 0.55 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800 }}>{m.name}</div>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: 10, flex: '0 0 auto', background: t.bg, color: t.tone,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Wallet size={16} strokeWidth={2.25} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em' }}>{money(m.balance)}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: t.tone }}>
+                    Maanta · Today +{money(m.todayTotal)}
+                  </div>
+                  {m.status !== 'active' && (
+                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--danger)' }}>⏸ La xiray · Disabled</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
         <div className="card card-pad">

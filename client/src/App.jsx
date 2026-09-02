@@ -16,6 +16,10 @@ import RestaurantOverview from './pages/restaurant/Overview';
 import Orders from './pages/restaurant/Orders';
 import Pos from './pages/restaurant/Pos';
 import Payments from './pages/restaurant/Payments';
+import PayMethods from './pages/restaurant/PayMethods';
+import PayTransfer from './pages/restaurant/PayTransfer';
+import Expenses from './pages/restaurant/Expenses';
+import Reports from './pages/restaurant/Reports';
 import RestaurantSms from './pages/restaurant/Sms';
 import Products from './pages/restaurant/Products';
 import Categories from './pages/restaurant/Categories';
@@ -84,6 +88,10 @@ export default function App() {
               <Route path="orders" element={<Orders />} />
               <Route path="pos" element={<Pos />} />
               <Route path="payments" element={<Payments />} />
+              <Route path="paymethods" element={<PayMethods />} />
+              <Route path="transfers" element={<PayTransfer />} />
+              <Route path="expenses" element={<Expenses />} />
+              <Route path="reports" element={<Reports />} />
               <Route path="sms" element={<RestaurantSms />} />
               <Route path="products" element={<Products />} />
               <Route path="categories" element={<Categories />} />

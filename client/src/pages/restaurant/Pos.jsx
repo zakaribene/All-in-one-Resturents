@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, Plus, Minus, Trash2, Phone, StickyNote, Wallet, HandCoins } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, Phone, StickyNote, Wallet, HandCoins, Lock } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
+
+const pinKeyStyle = {
+  height: 56, fontSize: 20, fontWeight: 700, borderRadius: 14,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
 
 function imgStyle(hue) {
   return {
@@ -30,10 +35,12 @@ function declineMeta(info) {
 }
 
 export default function Pos() {
-  const { addToast } = useOutletContext();
+  const { addToast, me } = useOutletContext();
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [paymentOptions, setPaymentOptions] = useState([]);
+  const [manualMethods, setManualMethods] = useState([]);
+  const [manualMethod, setManualMethod] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('all');
   const [query, setQuery] = useState('');
@@ -49,6 +56,21 @@ export default function Pos() {
   const [placeError, setPlaceError] = useState('');
   const [clientRequestId, setClientRequestId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [methodError, setMethodError] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [lockReady, setLockReady] = useState(false);
+  const [pin, setPin] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+
+  const posPinRequired = !!me?.posPinRequired;
+  const noPin = posPinRequired && me?.hasPosPin === false;
+
+  useEffect(() => {
+    if (!me || lockReady) return;
+    setLocked(!!me.posPinRequired);
+    setLockReady(true);
+  }, [me, lockReady]);
 
   useEffect(() => {
     setLoading(true);
@@ -62,8 +84,33 @@ export default function Pos() {
       setPaymentOptions(po.data.paymentOptions);
       setProvider(po.data.defaultProvider);
       setPayNow(!!po.data.paymentOptions.length);
+      setManualMethods(po.data.manualMethods || []);
+      setManualMethod((po.data.manualMethods || [])[0]?.id || null);
     }).finally(() => setLoading(false));
   }, []);
+
+  async function submitPin(value) {
+    setUnlocking(true); setUnlockError('');
+    try {
+      await api.post('/restaurant/pos/unlock', { pin: value });
+      setLocked(false); setPin('');
+    } catch (e) {
+      setUnlockError(apiErrorMessage(e, 'Wrong PIN'));
+      setPin('');
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
+  function pressKey(k) {
+    if (unlocking) return;
+    setUnlockError('');
+    if (k === 'del') { setPin((p) => p.slice(0, -1)); return; }
+    if (pin.length >= 4) return;
+    const next = pin + k;
+    setPin(next);
+    if (next.length === 4) submitPin(next);
+  }
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -100,14 +147,15 @@ export default function Pos() {
 
   function resetOrder() {
     setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setNote(''); setStage('cart');
-    setDeclineInfo(null); setPlaceError(''); setClientRequestId('');
+    setDeclineInfo(null); setPlaceError(''); setClientRequestId(''); setMethodError(false);
   }
 
   async function submit() {
     if (!cartLines.length) return;
     if (!phone.trim()) { setPhoneError(true); return; }
-    setPlaceError(''); setBusy(true);
     const useOnlinePay = payNow && paymentOptions.length > 0;
+    if (!useOnlinePay && manualMethods.length && !manualMethod) { setMethodError(true); return; }
+    setPlaceError(''); setBusy(true);
     if (useOnlinePay) setStage('paying');
     try {
       const items = cartLines.map((l) => ({ productId: l.product.id, qty: l.qty }));
@@ -116,6 +164,7 @@ export default function Pos() {
       const { data } = await api.post('/restaurant/pos/orders', {
         phone: phone.trim(), note: note.trim(), items, discount: discountAmount,
         payNow: useOnlinePay, paymentProvider: useOnlinePay ? provider : undefined,
+        manualMethodId: useOnlinePay ? undefined : manualMethod,
         clientRequestId: crid,
       }, { timeout: 50000 });
       addToast({ title: 'Dalabka waa la diray · Order sent to kitchen', body: `#${data.number} · $${total.toFixed(2)}`, tone: 'success' });
@@ -144,7 +193,9 @@ export default function Pos() {
     if (!declineInfo?.orderId) return;
     setBusy(true);
     try {
-      const { data } = await api.post(`/restaurant/pos/orders/${declineInfo.orderId}/pay-at-table`);
+      const { data } = await api.post(`/restaurant/pos/orders/${declineInfo.orderId}/pay-at-table`, {
+        manualMethodId: manualMethods.length ? manualMethod : undefined,
+      });
       addToast({ title: 'Dalabka waa la diray · Order sent to kitchen', body: `#${data.number} · Manual pay`, tone: 'success' });
       resetOrder();
     } catch (err) {
@@ -156,6 +207,51 @@ export default function Pos() {
 
   const catName = (id) => categories.find((c) => c.id === id)?.en || '';
 
+  if (noPin) {
+    return (
+      <div className="card card-pad" style={{ textAlign: 'center', padding: 50, maxWidth: 460, margin: '40px auto' }}>
+        <Lock size={30} strokeWidth={1.75} color="var(--danger)" style={{ marginBottom: 12 }} />
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>PIN weli laguuma dejin · No POS PIN set</div>
+        <div style={{ color: 'var(--muted-1)', fontSize: 13 }}>
+          Weydiiso milkiilaha inuu PIN POS 4-lambar ah kuu sameeyo bogga Shaqaalaha ·
+          Ask the owner to set your 4-digit POS PIN on the Staff page.
+        </div>
+      </div>
+    );
+  }
+
+  if (locked) {
+    return (
+      <div style={{ maxWidth: 320, margin: '32px auto', textAlign: 'center' }}>
+        <div style={{ width: 56, height: 56, borderRadius: 99, background: 'var(--panel-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <Lock size={24} strokeWidth={2} color="var(--muted-4)" />
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 17 }}>POS waa xiran yahay · POS locked</div>
+        <div style={{ fontSize: 13, color: 'var(--muted-2)', marginTop: 4, marginBottom: 22 }}>
+          Geli PIN-kaaga 4-lambar ah · Enter your 4-digit PIN{me?.staffName ? ` · ${me.staffName}` : ''}
+        </div>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 18 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} style={{
+              width: 14, height: 14, borderRadius: 99,
+              background: i < pin.length ? 'var(--accent)' : 'var(--border-strong)',
+              transition: 'background .15s',
+            }} />
+          ))}
+        </div>
+        {unlockError && <div style={{ color: 'var(--danger)', fontSize: 13, fontWeight: 600, marginBottom: 14 }}>{unlockError}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
+            <button key={k} className="btn-outline" style={pinKeyStyle} disabled={unlocking} onClick={() => pressKey(k)}>{k}</button>
+          ))}
+          <span />
+          <button className="btn-outline" style={pinKeyStyle} disabled={unlocking} onClick={() => pressKey('0')}>0</button>
+          <button className="btn-outline" style={pinKeyStyle} disabled={unlocking || !pin.length} onClick={() => pressKey('del')}>⌫</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, alignItems: 'start' }}>
       <div>
@@ -164,9 +260,20 @@ export default function Pos() {
             <h1 className="page-title" style={{ fontSize: 24 }}>POS · Dalab macmiil</h1>
             <p className="page-sub">U samee dalab macmiil markuu QR-ka ku dhibtoonaayo · Take an order on the customer's behalf.</p>
           </div>
-          <div style={{ position: 'relative', minWidth: 220 }}>
-            <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-            <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi cunto…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {posPinRequired && (
+              <button
+                className="btn-outline" title="Xir POS · Lock POS"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                onClick={() => { setLocked(true); setPin(''); setUnlockError(''); }}
+              >
+                <Lock size={14} strokeWidth={2.25} /> Xir · Lock
+              </button>
+            )}
+            <div style={{ position: 'relative', minWidth: 220 }}>
+              <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+              <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi cunto…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -282,6 +389,24 @@ export default function Pos() {
                 </>
               )}
 
+              {!payNow && !!manualMethods.length && (
+                <>
+                  <label className="field-label">Habka lacag-bixinta · Paid with *</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: methodError ? 4 : 14 }}>
+                    {manualMethods.map((m) => (
+                      <button
+                        key={m.id} type="button"
+                        className={'chip' + (manualMethod === m.id ? ' active' : '')}
+                        onClick={() => { setManualMethod(m.id); setMethodError(false); }}
+                      >
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                  {methodError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Dooro habka lacag-bixinta · Choose a payment method</div>}
+                </>
+              )}
+
               <label className="field-label">Dhimis · Discount ($)</label>
               <input
                 type="number" min="0" step="0.01" className="field-input" style={{ marginBottom: 12 }}
@@ -337,6 +462,16 @@ export default function Pos() {
                 <div style={{ fontSize: 12.5, color: 'var(--muted-2)', lineHeight: 1.5, marginTop: 8 }}>
                   <div>{meta.hint.so}</div>
                   <div style={{ opacity: .85 }}>{meta.hint.en}</div>
+                </div>
+              )}
+              {declineInfo.allowPayAtTable && !!manualMethods.length && (
+                <div style={{ width: '100%', marginTop: 20 }}>
+                  <label className="field-label" style={{ textAlign: 'left', display: 'block' }}>Habka lacag-bixinta · Paid with</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {manualMethods.map((m) => (
+                      <button key={m.id} type="button" className={'chip' + (manualMethod === m.id ? ' active' : '')} onClick={() => setManualMethod(m.id)}>{m.name}</button>
+                    ))}
+                  </div>
                 </div>
               )}
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
