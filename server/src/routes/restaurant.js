@@ -49,11 +49,18 @@ router.get('/me', async (req, res) => {
     hasPosPin = !!staff?.posPinHash;
   }
   const posPinRequired = req.auth.role === 'staff' && Array.isArray(req.auth.permissions) && req.auth.permissions.includes('pos');
+  const [hasPaymentAccount, hasSmsAccount] = await Promise.all([
+    PaymentAccount.exists({ restaurant: req.auth.id, status: 'active' }),
+    SmsAccount.exists({ restaurant: req.auth.id, status: 'active' }),
+  ]);
   res.json({
     id: r._id, name: r.name, city: r.city, ownerName: r.ownerName, plan: r.plan,
     hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
     role: req.auth.role, permissions: req.auth.role === 'staff' ? req.auth.permissions : null, staffName,
     posPinRequired, hasPosPin,
+    receiptPaymentNumbers: r.receiptPaymentNumbers || [],
+    // Payments/SMS only show up once the super admin has connected an account for this restaurant.
+    paymentsEnabled: !!hasPaymentAccount, smsEnabled: !!hasSmsAccount,
   });
 });
 
@@ -65,6 +72,17 @@ router.post('/upload', requireOwnerOnly, upload.single('image'), async (req, res
   const field = kind === 'logo' ? 'logoUrl' : 'coverUrl';
   await Restaurant.findByIdAndUpdate(req.auth.id, { [field]: url });
   res.json({ url });
+});
+
+// The list of pay-by-transfer numbers (EVC, eDahab, etc.) shown at the
+// bottom of every printed receipt, so customers know where to send money.
+router.patch('/settings/receipt-payment-numbers', requireOwnerOnly, async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  const clean = items
+    .map((it) => ({ label: String(it?.label || '').trim(), number: String(it?.number || '').trim() }))
+    .filter((it) => it.label && it.number);
+  const r = await Restaurant.findByIdAndUpdate(req.auth.id, { receiptPaymentNumbers: clean }, { new: true }).lean();
+  res.json({ receiptPaymentNumbers: r.receiptPaymentNumbers || [] });
 });
 
 // ---- Categories ----
@@ -102,7 +120,7 @@ router.delete('/categories/:id', requirePermission('categories'), async (req, re
 });
 
 // ---- Products ----
-router.get('/products', requireAnyPermission(['overview', 'products', 'pos']), async (req, res) => {
+router.get('/products', requireAnyPermission(['overview', 'products', 'pos', 'orders']), async (req, res) => {
   const products = await Product.find({ restaurant: req.auth.id }).sort({ createdAt: -1 }).lean();
   res.json(products.map(mapProduct));
 });
@@ -193,6 +211,7 @@ function mapOrder(o) {
   return {
     id: o._id, number: o.number, channel: o.channel, tableLabel: o.tableLabel, phone: o.phone, note: o.note,
     items: o.items, total: o.total, discount: o.discount || 0, status: o.status, payment: o.payment, createdAt: o.createdAt,
+    createdByName: o.createdByName || null, createdByRole: o.createdByRole || null,
   };
 }
 
@@ -208,7 +227,75 @@ router.post('/orders/:id/complete', requirePermission('orders'), async (req, res
   res.json(mapOrder(o));
 });
 
+// A POS order placed as "Manual" stays unpaid/pending until a waiter marks it
+// paid here (choosing which till/account collected the cash), at which point
+// it can no longer be edited.
+router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), async (req, res) => {
+  const { manualMethodId } = req.body || {};
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be marked paid here' });
+  if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Already paid' });
+
+  const activeMethods = await PaymentMethod.find({ restaurant: req.auth.id, status: 'active' }).lean();
+  let method = null;
+  if (activeMethods.length) {
+    method = activeMethods.find(m => String(m._id) === String(manualMethodId));
+    if (!method) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
+  }
+  if (method) await attributeManualCollection(order, method, await resolveCollector(req));
+
+  order.payment.method = 'pay_at_table';
+  order.payment.status = 'paid';
+  order.payment.paidAt = new Date();
+  await order.save();
+
+  const payload = mapOrder(order.toObject());
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json(payload);
+});
+
+// Lets a waiter add extra items to a still-pending (unpaid) POS order — e.g.
+// the customer orders more before the bill is settled.
+router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'No items provided' });
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be edited here' });
+  if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+
+  const products = await Product.find({ _id: { $in: items.map(i => i.productId) }, restaurant: req.auth.id, status: 'active' }).lean();
+  const productMap = new Map(products.map(p => [String(p._id), p]));
+
+  const added = [];
+  for (const i of items) {
+    const p = productMap.get(String(i.productId));
+    if (!p) continue;
+    const qty = Math.max(1, Number(i.qty) || 1);
+    const existing = order.items.find(it => it.name === p.nameEn && it.price === p.price);
+    if (existing) existing.qty += qty;
+    else order.items.push({ name: p.nameEn, qty, price: p.price });
+    added.push({ id: p._id, qty });
+  }
+  if (!added.length) return res.status(400).json({ error: 'No valid items' });
+
+  const subtotal = order.items.reduce((a, it) => a + it.price * it.qty, 0);
+  order.total = Math.round((subtotal - (order.discount || 0)) * 100) / 100;
+  await order.save();
+  await Product.bulkWrite(added.map(a => ({
+    updateOne: { filter: { _id: a.id }, update: { $inc: { sold: a.qty } } },
+  })));
+
+  const payload = mapOrder(order.toObject());
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json(payload);
+});
+
 router.delete('/orders/:id', requireAnyPermission(['orders', 'payments']), async (req, res) => {
+  if (req.auth.role === 'staff' && !req.auth.permissions?.includes('orders_delete')) {
+    return res.status(403).json({ error: 'You do not have permission to delete orders · Fasax kuma lihid' });
+  }
   const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!o) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
@@ -257,9 +344,9 @@ router.post('/orders/simulate', requirePermission('orders'), async (req, res) =>
 
 // Name shown as the collector on a manual payment ledger row.
 async function resolveCollector(req) {
-  if (req.auth.role === 'restaurant') return { id: null, name: 'Owner' };
+  if (req.auth.role === 'restaurant') return { id: null, name: 'Owner', role: 'owner' };
   const s = await Staff.findById(req.auth.staffId).select('name').lean();
-  return { id: req.auth.staffId, name: s?.name || 'Staff' };
+  return { id: req.auth.staffId, name: s?.name || 'Staff', role: 'staff' };
 }
 
 // Attributes an order's total to a restaurant-defined manual payment method:
@@ -301,10 +388,11 @@ router.post('/pos/unlock', requirePermission('pos'), async (req, res) => {
 });
 
 router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
-  const { phone, note, items, paymentProvider, payNow, clientRequestId, discount, manualMethodId } = req.body || {};
+  const { phone, note, items, paymentProvider, payNow, clientRequestId, discount } = req.body || {};
   const cleanPhone = String(phone || '').trim();
   const cleanNote = String(note || '').trim();
-  if (!cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
+  // Phone is only needed to charge the customer online — manual/pay-at-table orders don't require it.
+  if (payNow && !cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
 
   const restaurant = await Restaurant.findById(req.auth.id);
@@ -321,8 +409,10 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
   }
   if (!orderItems.length) return res.status(400).json({ error: 'No valid items in cart' });
 
+  // Staff need the explicit pos_discount permission to knock money off an order.
+  const canDiscount = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_discount');
   const subtotal = orderItems.reduce((a, i) => a + i.price * i.qty, 0);
-  const discountAmount = Math.min(Math.max(0, Number(discount) || 0), subtotal);
+  const discountAmount = canDiscount ? Math.min(Math.max(0, Number(discount) || 0), subtotal) : 0;
   const total = Math.round((subtotal - discountAmount) * 100) / 100;
 
   async function bumpSold() {
@@ -331,22 +421,19 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
     })));
   }
 
-  // Manual order: staff collects payment at the till, no online charge.
+  // Manual order: staff sends it without collecting payment yet. It stays
+  // "pending" until a waiter marks it paid (and picks a method) later on
+  // the Orders page, once the bill has actually been settled.
   if (!payNow) {
-    const activeMethods = await PaymentMethod.find({ restaurant: req.auth.id, status: 'active' }).lean();
-    let method = null;
-    if (activeMethods.length) {
-      method = activeMethods.find(m => String(m._id) === String(manualMethodId));
-      if (!method) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
-    }
     const number = restaurant.nextOrderNumber();
     await restaurant.save();
+    const collector = await resolveCollector(req);
     const order = await Order.create({
       restaurant: req.auth.id, number, channel: 'pos',
       phone: cleanPhone, note: cleanNote, items: orderItems, total, discount: discountAmount, status: 'new',
+      createdByName: collector.name, createdByRole: collector.role,
     });
     await bumpSold();
-    if (method) await attributeManualCollection(order, method, await resolveCollector(req));
     const payload = mapOrder(order.toObject());
     emitToRestaurant(req.auth.id, 'order:new', payload);
     return res.status(201).json(payload);
@@ -373,9 +460,11 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
   if (!order) {
     const number = restaurant.nextOrderNumber();
     await restaurant.save();
+    const collector = await resolveCollector(req);
     order = await Order.create({
       restaurant: req.auth.id, number, channel: 'pos',
       phone: cleanPhone, note: cleanNote, items: orderItems, total, discount: discountAmount, status: 'new',
+      createdByName: collector.name, createdByRole: collector.role,
       payment: {
         method: 'waafipay', provider: account.provider, status: 'pending',
         amount: total, currency: account.currency, clientRequestId: clientRequestId || null,
@@ -1031,7 +1120,7 @@ router.post('/staff', requireOwnerOnly, async (req, res) => {
   const cleanUsername = String(username).trim().toLowerCase();
   const existing = await Staff.findOne({ username: cleanUsername });
   if (existing) return res.status(409).json({ error: 'Username already taken' });
-  const cleanPermissions = Array.isArray(permissions) ? permissions.filter((p) => Staff.PAGE_IDS.includes(p)) : [];
+  const cleanPermissions = Array.isArray(permissions) ? permissions.filter((p) => (Staff.PAGE_IDS.includes(p) || Staff.SUB_PERMISSION_IDS.includes(p))) : [];
   const passwordHash = await bcrypt.hash(password, 10);
   const staff = await Staff.create({
     restaurant: req.auth.id, name, username: cleanUsername, passwordHash,
@@ -1056,7 +1145,7 @@ router.patch('/staff/:id', requireOwnerOnly, async (req, res) => {
   }
   if (name) staff.name = name;
   if (role != null) staff.role = role;
-  if (Array.isArray(permissions)) staff.permissions = permissions.filter((p) => Staff.PAGE_IDS.includes(p));
+  if (Array.isArray(permissions)) staff.permissions = permissions.filter((p) => (Staff.PAGE_IDS.includes(p) || Staff.SUB_PERMISSION_IDS.includes(p)));
   if (password) {
     if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
     staff.passwordHash = await bcrypt.hash(password, 10);

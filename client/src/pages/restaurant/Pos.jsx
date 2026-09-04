@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Search, Plus, Minus, Trash2, Phone, StickyNote, Wallet, HandCoins, Lock } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
+import ReceiptModal from '../../components/ReceiptModal';
 
 const pinKeyStyle = {
   height: 56, fontSize: 20, fontWeight: 700, borderRadius: 14,
@@ -39,8 +40,6 @@ export default function Pos() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [paymentOptions, setPaymentOptions] = useState([]);
-  const [manualMethods, setManualMethods] = useState([]);
-  const [manualMethod, setManualMethod] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('all');
   const [query, setQuery] = useState('');
@@ -56,7 +55,7 @@ export default function Pos() {
   const [placeError, setPlaceError] = useState('');
   const [clientRequestId, setClientRequestId] = useState('');
   const [busy, setBusy] = useState(false);
-  const [methodError, setMethodError] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState(null);
   const [locked, setLocked] = useState(false);
   const [lockReady, setLockReady] = useState(false);
   const [pin, setPin] = useState('');
@@ -84,8 +83,6 @@ export default function Pos() {
       setPaymentOptions(po.data.paymentOptions);
       setProvider(po.data.defaultProvider);
       setPayNow(!!po.data.paymentOptions.length);
-      setManualMethods(po.data.manualMethods || []);
-      setManualMethod((po.data.manualMethods || [])[0]?.id || null);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -128,8 +125,10 @@ export default function Pos() {
   }, [cart, products]);
   const cartCount = cartLines.reduce((a, l) => a + l.qty, 0);
   const subtotal = cartLines.reduce((a, l) => a + l.product.price * l.qty, 0);
-  const discountAmount = Math.min(Math.max(0, Number(discount) || 0), subtotal);
+  const canDiscount = me?.role !== 'staff' || me?.permissions?.includes('pos_discount');
+  const discountAmount = canDiscount ? Math.min(Math.max(0, Number(discount) || 0), subtotal) : 0;
   const total = subtotal - discountAmount;
+  const useOnlinePay = payNow && paymentOptions.length > 0;
 
   function addToCart(pid) { setCart((c) => ({ ...c, [pid]: (c[pid] || 0) + 1 })); }
   function decCart(pid) {
@@ -147,14 +146,12 @@ export default function Pos() {
 
   function resetOrder() {
     setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setNote(''); setStage('cart');
-    setDeclineInfo(null); setPlaceError(''); setClientRequestId(''); setMethodError(false);
+    setDeclineInfo(null); setPlaceError(''); setClientRequestId('');
   }
 
   async function submit() {
     if (!cartLines.length) return;
-    if (!phone.trim()) { setPhoneError(true); return; }
-    const useOnlinePay = payNow && paymentOptions.length > 0;
-    if (!useOnlinePay && manualMethods.length && !manualMethod) { setMethodError(true); return; }
+    if (useOnlinePay && !phone.trim()) { setPhoneError(true); return; }
     setPlaceError(''); setBusy(true);
     if (useOnlinePay) setStage('paying');
     try {
@@ -164,11 +161,11 @@ export default function Pos() {
       const { data } = await api.post('/restaurant/pos/orders', {
         phone: phone.trim(), note: note.trim(), items, discount: discountAmount,
         payNow: useOnlinePay, paymentProvider: useOnlinePay ? provider : undefined,
-        manualMethodId: useOnlinePay ? undefined : manualMethod,
         clientRequestId: crid,
       }, { timeout: 50000 });
       addToast({ title: 'Dalabka waa la diray · Order sent to kitchen', body: `#${data.number} · $${total.toFixed(2)}`, tone: 'success' });
       resetOrder();
+      if (!useOnlinePay) setReceiptOrder(data);
     } catch (e) {
       const res = e?.response?.data;
       if (e?.response?.status === 402 && res?.orderId) {
@@ -193,11 +190,10 @@ export default function Pos() {
     if (!declineInfo?.orderId) return;
     setBusy(true);
     try {
-      const { data } = await api.post(`/restaurant/pos/orders/${declineInfo.orderId}/pay-at-table`, {
-        manualMethodId: manualMethods.length ? manualMethod : undefined,
-      });
+      const { data } = await api.post(`/restaurant/pos/orders/${declineInfo.orderId}/pay-at-table`, {});
       addToast({ title: 'Dalabka waa la diray · Order sent to kitchen', body: `#${data.number} · Manual pay`, tone: 'success' });
       resetOrder();
+      setReceiptOrder(data);
     } catch (err) {
       addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
     } finally {
@@ -253,6 +249,7 @@ export default function Pos() {
   }
 
   return (
+    <>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, alignItems: 'start' }}>
       <div>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18, gap: 16, flexWrap: 'wrap' }}>
@@ -340,7 +337,9 @@ export default function Pos() {
               ))}
             </div>
             <div style={{ borderTop: '1px solid var(--border-soft)', padding: 18 }}>
-              <label className="field-label">Lambarka macmiilka · Customer phone *</label>
+              <label className="field-label">
+                Lambarka macmiilka · Customer phone {useOnlinePay ? '*' : <span style={{ color: 'var(--muted-3)', fontWeight: 500 }}>(ikhtiyaari · optional)</span>}
+              </label>
               <div style={{ position: 'relative', marginBottom: phoneError ? 4 : 12 }}>
                 <Phone size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
                 <input
@@ -389,30 +388,16 @@ export default function Pos() {
                 </>
               )}
 
-              {!payNow && !!manualMethods.length && (
+              {canDiscount && (
                 <>
-                  <label className="field-label">Habka lacag-bixinta · Paid with *</label>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: methodError ? 4 : 14 }}>
-                    {manualMethods.map((m) => (
-                      <button
-                        key={m.id} type="button"
-                        className={'chip' + (manualMethod === m.id ? ' active' : '')}
-                        onClick={() => { setManualMethod(m.id); setMethodError(false); }}
-                      >
-                        {m.name}
-                      </button>
-                    ))}
-                  </div>
-                  {methodError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Dooro habka lacag-bixinta · Choose a payment method</div>}
+                  <label className="field-label">Dhimis · Discount ($)</label>
+                  <input
+                    type="number" min="0" step="0.01" className="field-input" style={{ marginBottom: 12 }}
+                    placeholder="0.00" value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                  />
                 </>
               )}
-
-              <label className="field-label">Dhimis · Discount ($)</label>
-              <input
-                type="number" min="0" step="0.01" className="field-input" style={{ marginBottom: 12 }}
-                placeholder="0.00" value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-              />
 
               <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0 2px' }}>
                 <span style={{ color: 'var(--muted-2)', fontSize: 13 }}>Wadarta hoose · Subtotal</span>
@@ -464,16 +449,6 @@ export default function Pos() {
                   <div style={{ opacity: .85 }}>{meta.hint.en}</div>
                 </div>
               )}
-              {declineInfo.allowPayAtTable && !!manualMethods.length && (
-                <div style={{ width: '100%', marginTop: 20 }}>
-                  <label className="field-label" style={{ textAlign: 'left', display: 'block' }}>Habka lacag-bixinta · Paid with</label>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {manualMethods.map((m) => (
-                      <button key={m.id} type="button" className={'chip' + (manualMethod === m.id ? ' active' : '')} onClick={() => setManualMethod(m.id)}>{m.name}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
                 {declineInfo.allowRetry && (
                   <button className="btn btn-primary" style={{ width: '100%', padding: 13, borderRadius: 12 }} onClick={retry} disabled={busy}>
@@ -491,5 +466,7 @@ export default function Pos() {
         })()}
       </div>
     </div>
+    {receiptOrder && <ReceiptModal order={receiptOrder} restaurant={me} onClose={() => setReceiptOrder(null)} />}
+    </>
   );
 }

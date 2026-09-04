@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, Wallet, ArrowLeftRight, Receipt, BarChart3, MessageSquare, UtensilsCrossed, FolderOpen, QrCode, Users } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, Wallet, ArrowLeftRight, Receipt, BarChart3, MessageSquare, UtensilsCrossed, FolderOpen, QrCode, Users, Settings } from 'lucide-react';
 
 // Pages a staff account can be granted access to. Keep ids in sync with
 // server/src/models/Staff.js PAGE_IDS and the route paths under /dashboard/*.
@@ -17,5 +17,14 @@ export const NAV_PAGES = [
   { id: 'qr', so: 'QR Codes', en: 'QR Codes', icon: QrCode },
 ];
 
-// Owner-only page — never assignable as a staff permission.
+// Owner-only pages — never assignable as a staff permission.
 export const STAFF_PAGE = { id: 'staff', so: 'Shaqaalaha', en: 'Staff', icon: Users };
+export const SETTINGS_PAGE = { id: 'settings', so: 'Dejinta', en: 'Settings', icon: Settings };
+
+// Fine-grained action permissions, nested under the page they apply to. A staff
+// account only sees the action if it also has the parent page id. Keep ids in
+// sync with server/src/models/Staff.js SUB_PERMISSION_IDS.
+export const SUB_PERMISSIONS = [
+  { id: 'pos_discount', pageId: 'pos', so: 'Dhimis · Discount-ka', en: 'Can apply discounts' },
+  { id: 'orders_delete', pageId: 'orders', so: 'Tirtir dalabyada', en: 'Can delete orders' },
+];

@@ -12,7 +12,7 @@ import { api } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { playBeep } from '../../lib/toast';
 import { useToasts } from '../../lib/useToasts';
-import { NAV_PAGES, STAFF_PAGE } from '../../lib/navPages';
+import { NAV_PAGES, STAFF_PAGE, SETTINGS_PAGE } from '../../lib/navPages';
 
 export default function RestaurantLayout() {
   const location = useLocation();
@@ -28,14 +28,20 @@ export default function RestaurantLayout() {
   soundOnRef.current = soundOn;
 
   const isStaff = me?.role === 'staff';
-  const allPages = useMemo(() => [...NAV_PAGES, STAFF_PAGE], []);
+  const allPages = useMemo(() => [...NAV_PAGES, STAFF_PAGE, SETTINGS_PAGE], []);
+  // Payments/SMS only appear once the super admin has connected an account for this restaurant.
+  const featureAllowed = (id) => {
+    if (id === 'payments') return !!me?.paymentsEnabled;
+    if (id === 'sms') return !!me?.smsEnabled;
+    return true;
+  };
   const visibleNav = useMemo(() => {
-    if (!isStaff) return allPages;
-    return NAV_PAGES.filter((n) => me?.permissions?.includes(n.id));
+    const base = isStaff ? NAV_PAGES.filter((n) => me?.permissions?.includes(n.id)) : allPages;
+    return base.filter((n) => featureAllowed(n.id));
   }, [isStaff, me, allPages]);
   const active = allPages.find((n) => location.pathname.includes(n.id))?.id || null;
-  const hasAccess = !me || !isStaff || !active || me.permissions?.includes(active);
-  const homeId = isStaff ? (NAV_PAGES.find((n) => me?.permissions?.includes(n.id))?.id || 'orders') : 'overview';
+  const hasAccess = !me || !active || (featureAllowed(active) && (!isStaff || me.permissions?.includes(active)));
+  const homeId = isStaff ? (visibleNav[0]?.id || 'orders') : 'overview';
 
   useEffect(() => {
     api.get('/restaurant/me').then((r) => setMe(r.data));

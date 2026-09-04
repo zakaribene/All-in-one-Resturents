@@ -12,6 +12,10 @@ const RestaurantSchema = new mongoose.Schema({
   logoUrl: { type: String, default: '' },
   coverUrl: { type: String, default: '' },
   orderSeq: { type: Number, default: 1000 },
+  receiptPaymentNumbers: {
+    type: [{ label: { type: String, required: true, trim: true }, number: { type: String, required: true, trim: true } }],
+    default: [],
+  },
 }, { timestamps: true });
 
 RestaurantSchema.methods.nextOrderNumber = function () {

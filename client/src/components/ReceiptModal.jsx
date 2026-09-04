@@ -30,16 +30,29 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
             <span>Order #{order.number}</span>
             <span>{m.icon} {m.label}</span>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>
-            📞 <a href={`tel:${order.phone}`} style={{ color: 'var(--accent)' }}>{order.phone}</a>
-          </div>
+          {order.phone && (
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              📞 <a href={`tel:${order.phone}`} style={{ color: 'var(--accent)' }}>{order.phone}</a>
+            </div>
+          )}
           {order.note && <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 2 }}>Note: {order.note}</div>}
+          {order.createdByRole === 'staff' && order.createdByName && (
+            <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 2 }}>Waxaa qaatay · Taken by: {order.createdByName}</div>
+          )}
+          {order.channel === 'pos' && (
+            <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: order.payment?.status === 'paid' ? 'var(--success)' : 'var(--warning-fg)' }}>
+              {order.payment?.status === 'paid' ? '✓ La bixiyay · Paid' : '⏳ Sugaya lacag · Pending payment'}
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
           {order.items.map((it, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span>{it.qty}× {it.name}</span>
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 13 }}>
+              <div>
+                <div>{it.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>${it.price.toFixed(2)} × {it.qty}</div>
+              </div>
               <span>${(it.qty * it.price).toFixed(2)}</span>
             </div>
           ))}
@@ -63,6 +76,22 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
             <span>${order.total.toFixed(2)}</span>
           </div>
         </div>
+
+        {!!restaurant?.receiptPaymentNumbers?.length && (
+          <div style={{ borderTop: '1px dashed var(--border-strong)', marginTop: 12, paddingTop: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+              Lacag-bixinta · Payment info
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {restaurant.receiptPaymentNumbers.map((p, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                  <span style={{ color: 'var(--muted-2)' }}>{p.label}</span>
+                  <span style={{ fontWeight: 700 }}>{p.number}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>

@@ -156,8 +156,14 @@ input, select, textarea { font-family: inherit; }
 .btn-sm { padding: 9px 14px; font-size: 13px; }
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-ghost { background: var(--surface); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--surface)); }
-.btn-outline { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted-4); font-size: 12px; font-weight: 700; cursor: pointer; }
-.btn-danger-outline { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--danger-border); background: var(--surface); color: var(--danger); font-size: 12px; font-weight: 700; cursor: pointer; }
+.btn-outline {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted-4); font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.btn-danger-outline {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  padding: 7px 12px; border-radius: 8px; border: 1px solid var(--danger-border); background: var(--surface); color: var(--danger); font-size: 12px; font-weight: 700; cursor: pointer;
+}
 
 /* ---------- cards / surfaces ---------- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }

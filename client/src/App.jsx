@@ -25,6 +25,7 @@ import Products from './pages/restaurant/Products';
 import Categories from './pages/restaurant/Categories';
 import QrTab from './pages/restaurant/QrTab';
 import Staff from './pages/restaurant/Staff';
+import RestaurantSettings from './pages/restaurant/Settings';
 
 import CustomerOrder from './pages/customer/CustomerOrder';
 
@@ -43,8 +44,9 @@ function RequireRestaurant({ children }) {
 function DashboardIndex() {
   const { me } = useOutletContext();
   if (!me) return null;
+  const featureAllowed = (id) => (id === 'payments' ? !!me.paymentsEnabled : id === 'sms' ? !!me.smsEnabled : true);
   if (me.role === 'staff') {
-    const first = NAV_PAGES.find((p) => me.permissions?.includes(p.id));
+    const first = NAV_PAGES.find((p) => me.permissions?.includes(p.id) && featureAllowed(p.id));
     return <Navigate to={first ? first.id : 'orders'} replace />;
   }
   return <Navigate to="orders" replace />;
@@ -97,6 +99,7 @@ export default function App() {
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />
               <Route path="staff" element={<Staff />} />
+              <Route path="settings" element={<RestaurantSettings />} />
             </Route>
 
             <Route path="/order/:code" element={<CustomerOrder />} />

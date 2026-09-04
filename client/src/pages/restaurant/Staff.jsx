@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Pencil, Trash2, Power, UserPlus } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
-import { NAV_PAGES } from '../../lib/navPages';
+import { NAV_PAGES, SUB_PERMISSIONS } from '../../lib/navPages';
 
 export default function Staff() {
   const { addToast, confirm } = useOutletContext();
@@ -155,6 +155,14 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
   const [busy, setBusy] = useState(false);
 
   function togglePage(id) {
+    setPermissions((prev) => {
+      if (!prev.includes(id)) return [...prev, id];
+      // Dropping a page also drops any restricted actions that only make sense with it.
+      const tiedSubIds = SUB_PERMISSIONS.filter((s) => s.pageId === id).map((s) => s.id);
+      return prev.filter((p) => p !== id && !tiedSubIds.includes(p));
+    });
+  }
+  function toggleSub(id) {
     setPermissions((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   }
 
@@ -214,6 +222,20 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
             </label>
           ))}
         </div>
+
+        {SUB_PERMISSIONS.some((s) => permissions.includes(s.pageId)) && (
+          <>
+            <label className="field-label">Dhaqdhaqaaqa gaarka ah · Extra permissions</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, border: '1px solid var(--border-soft)', borderRadius: 10, padding: 12 }}>
+              {SUB_PERMISSIONS.filter((s) => permissions.includes(s.pageId)).map((s) => (
+                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permissions.includes(s.id)} onChange={() => toggleSub(s.id)} />
+                  {s.so} · {s.en}
+                </label>
+              ))}
+            </div>
+          </>
+        )}
 
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
