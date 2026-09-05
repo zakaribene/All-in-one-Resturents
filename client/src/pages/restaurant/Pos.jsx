@@ -36,7 +36,7 @@ function declineMeta(info) {
 }
 
 export default function Pos() {
-  const { addToast, me } = useOutletContext();
+  const { addToast, me, posLocked, setPosLocked } = useOutletContext();
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [paymentOptions, setPaymentOptions] = useState([]);
@@ -56,20 +56,14 @@ export default function Pos() {
   const [clientRequestId, setClientRequestId] = useState('');
   const [busy, setBusy] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState(null);
-  const [locked, setLocked] = useState(false);
-  const [lockReady, setLockReady] = useState(false);
   const [pin, setPin] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
 
   const posPinRequired = !!me?.posPinRequired;
   const noPin = posPinRequired && me?.hasPosPin === false;
-
-  useEffect(() => {
-    if (!me || lockReady) return;
-    setLocked(!!me.posPinRequired);
-    setLockReady(true);
-  }, [me, lockReady]);
+  // `posLocked` lives in RestaurantLayout so the lock persists across navigation
+  // and can be triggered by the idle timer for POS-only staff.
 
   useEffect(() => {
     setLoading(true);
@@ -90,7 +84,7 @@ export default function Pos() {
     setUnlocking(true); setUnlockError('');
     try {
       await api.post('/restaurant/pos/unlock', { pin: value });
-      setLocked(false); setPin('');
+      setPosLocked(false); setPin('');
     } catch (e) {
       setUnlockError(apiErrorMessage(e, 'Wrong PIN'));
       setPin('');
@@ -216,7 +210,7 @@ export default function Pos() {
     );
   }
 
-  if (locked) {
+  if (posLocked) {
     return (
       <div style={{ maxWidth: 320, margin: '32px auto', textAlign: 'center' }}>
         <div style={{ width: 56, height: 56, borderRadius: 99, background: 'var(--panel-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
@@ -262,7 +256,7 @@ export default function Pos() {
               <button
                 className="btn-outline" title="Xir POS · Lock POS"
                 style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-                onClick={() => { setLocked(true); setPin(''); setUnlockError(''); }}
+                onClick={() => { setPosLocked(true); setPin(''); setUnlockError(''); }}
               >
                 <Lock size={14} strokeWidth={2.25} /> Xir · Lock
               </button>

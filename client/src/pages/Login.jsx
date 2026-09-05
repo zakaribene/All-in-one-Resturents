@@ -9,6 +9,15 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [idleNote] = useState(() => {
+    try {
+      if (sessionStorage.getItem('miis_idle_logout')) {
+        sessionStorage.removeItem('miis_idle_logout');
+        return true;
+      }
+    } catch { /* ignore */ }
+    return false;
+  });
   const navigate = useNavigate();
 
   if (isAdminAuthed) return <Navigate to="/admin/overview" replace />;
@@ -72,6 +81,16 @@ export default function Login() {
           <p style={{ margin: '0 0 24px', color: 'var(--muted-1)', fontSize: 14 }}>
             Gal akoonkaaga · Sign in to continue.
           </p>
+
+          {idleNote && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted-1)', background: 'var(--panel-2)',
+              border: '1px solid var(--border-soft)', borderRadius: 10, padding: '9px 12px',
+              fontSize: 13, fontWeight: 600, marginBottom: 14,
+            }}>
+              Waa lagaa saaray 15 daqiiqo oo aan firfircooni lahayn · Signed out after 15 minutes of inactivity.
+            </div>
+          )}
 
           <label className="field-label">Isticmaale · Username</label>
           <input

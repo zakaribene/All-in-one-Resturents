@@ -46,8 +46,12 @@ export default function Overview() {
   const totalWalletBalance = methods.reduce((a, m) => a + (m.balance || 0), 0);
 
   const isToday = (d) => new Date(d).toDateString() === new Date().toDateString();
+  const isPaid = (o) => o.payment?.status === 'paid';
   const todayOrders = orders.filter((o) => isToday(o.createdAt));
-  const todayRevenue = todayOrders.reduce((a, o) => a + o.total, 0);
+  // Revenue only counts money actually collected — an order that is still
+  // pending / unpaid is not revenue yet.
+  const todayRevenue = todayOrders.filter(isPaid).reduce((a, o) => a + o.total, 0);
+  const todayPending = todayOrders.filter((o) => !isPaid(o)).reduce((a, o) => a + o.total, 0);
   const activeProducts = products.filter((p) => p.status === 'active').length;
 
   const counts = {
@@ -60,7 +64,7 @@ export default function Overview() {
 
   const stats = [
     { so: 'Dalabyada maanta', en: 'Orders today', val: String(todayOrders.length), sub: `${orders.length} total · guud ahaan`, Icon: ClipboardList, tone: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))' },
-    { so: 'Dakhliga maanta', en: 'Revenue today', val: `$${todayRevenue.toFixed(2)}`, sub: 'Pay at table · lacagta miiska', Icon: Wallet, tone: 'var(--success)', bg: 'var(--success-bg)' },
+    { so: 'Dakhliga maanta', en: 'Revenue today', val: `$${todayRevenue.toFixed(2)}`, sub: todayPending > 0 ? `$${todayPending.toFixed(2)} sugaya lacag · pending` : 'La bixiyay oo kaliya · Paid only', Icon: Wallet, tone: 'var(--success)', bg: 'var(--success-bg)' },
     { so: 'Cuntooyinka firfircoon', en: 'Active products', val: String(activeProducts), sub: `${products.length} total`, Icon: UtensilsCrossed, tone: 'var(--purple)', bg: 'var(--purple-bg)' },
     { so: 'Qorshaha', en: 'Plan', val: me?.plan || '—', sub: me?.city || '', Icon: Crown, tone: 'var(--warning-fg)', bg: 'var(--warning-bg)' },
   ];

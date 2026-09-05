@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
+import { useRestaurantAuth } from '../../lib/AuthContext';
+import { useIdleTimer } from '../../lib/useIdleTimer';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ProfileMenu from '../../components/ProfileMenu';
@@ -14,10 +16,16 @@ import { playBeep } from '../../lib/toast';
 import { useToasts } from '../../lib/useToasts';
 import { NAV_PAGES, STAFF_PAGE, SETTINGS_PAGE } from '../../lib/navPages';
 
+// Auto sign-out after this long with no activity.
+const IDLE_MS = 15 * 60 * 1000;
+
 export default function RestaurantLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useRestaurantAuth();
   const [me, setMe] = useState(null);
+  const [posLocked, setPosLocked] = useState(false);
+  const posInitRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [notifications, setNotifications] = useState([]);
@@ -46,6 +54,36 @@ export default function RestaurantLayout() {
   useEffect(() => {
     api.get('/restaurant/me').then((r) => setMe(r.data));
   }, []);
+
+  // POS starts locked for any staff account that has the POS page, so the
+  // lock survives navigating away and back (and idle-lock, below).
+  useEffect(() => {
+    if (!me || posInitRef.current) return;
+    posInitRef.current = true;
+    if (me.posPinRequired) setPosLocked(true);
+  }, [me]);
+
+  // A staff account whose ONLY page is POS: idle should lock the till with the
+  // PIN, not sign them out of the whole portal.
+  const isPosOnly =
+    isStaff &&
+    (() => {
+      const pages = (me?.permissions || []).filter((p) => allPages.some((n) => n.id === p));
+      return pages.length === 1 && pages[0] === 'pos';
+    })();
+
+  const handleIdle = useCallback(() => {
+    if (isPosOnly && me?.hasPosPin) {
+      setPosLocked(true);
+      navigate('/dashboard/pos', { replace: true });
+    } else {
+      try { sessionStorage.setItem('miis_idle_logout', '1'); } catch { /* ignore */ }
+      logout();
+      navigate('/', { replace: true });
+    }
+  }, [isPosOnly, me?.hasPosPin, logout, navigate]);
+
+  useIdleTimer(IDLE_MS, handleIdle, !!me);
 
   useEffect(() => {
     if (!me?.id) return;
@@ -133,7 +171,7 @@ export default function RestaurantLayout() {
         />
         <main className="main-area tight">
           {hasAccess ? (
-            <Outlet context={{ me, setMe, soundOn, setSoundOn, addToast, confirm }} />
+            <Outlet context={{ me, setMe, soundOn, setSoundOn, addToast, confirm, posLocked, setPosLocked }} />
           ) : (
             <div className="card card-pad" style={{ textAlign: 'center', padding: 50, maxWidth: 460, margin: '40px auto' }}>
               <ShieldAlert size={30} strokeWidth={1.75} color="var(--danger)" style={{ marginBottom: 12 }} />
