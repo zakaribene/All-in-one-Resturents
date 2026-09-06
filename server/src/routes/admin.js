@@ -12,6 +12,7 @@ const { requireAdmin } = require('../middleware/auth');
 const { makeTableCode, slugify } = require('../utils/codes');
 const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
 const { encrypt, decrypt } = require('../utils/crypto');
+const { dataSummary, purgeData } = require('../utils/restaurantData');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -195,6 +196,30 @@ router.patch('/restaurants/:id/password', async (req, res) => {
   await r.save();
   await Activity.create({ restaurant: r._id, message: `${r.name} password was reset by admin`, dot: '#E8A317' });
   res.json({ ok: true });
+});
+
+// Lists every tenant-scoped collection (auto-discovered — see utils/restaurantData.js)
+// with a live document count for this one restaurant, for the admin data-wipe tool.
+router.get('/restaurants/:id/data', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id).select('name username').lean();
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const items = await dataSummary(req.params.id);
+  res.json({ restaurant: { id: r._id, name: r.name, username: r.username }, items });
+});
+
+router.post('/restaurants/:id/data/purge', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id).select('name').lean();
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id) => typeof id === 'string') : [];
+  if (!ids.length) return res.status(400).json({ error: 'No collections selected' });
+  const results = await purgeData(req.params.id, ids);
+  const deletedAccount = results.some((res) => res.id === 'Restaurant' && res.deletedCount > 0);
+  await Activity.create({
+    restaurant: deletedAccount ? null : r._id,
+    message: `${r.name}: admin purged ${results.map((x) => `${x.label} (${x.deletedCount})`).join(', ')}`,
+    dot: '#E5484D',
+  });
+  res.json({ results });
 });
 
 router.post('/notifications', async (req, res) => {

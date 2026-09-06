@@ -10,6 +10,7 @@ import Notifications from './pages/admin/Notifications';
 import Billing from './pages/admin/Billing';
 import AdminSms from './pages/admin/Sms';
 import AdminSettings from './pages/admin/Settings';
+import AdminDataManager from './pages/admin/DataManager';
 
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
 import RestaurantOverview from './pages/restaurant/Overview';
@@ -74,6 +75,7 @@ export default function App() {
               <Route path="notifications" element={<Notifications />} />
               <Route path="billing" element={<Billing />} />
               <Route path="sms" element={<AdminSms />} />
+              <Route path="data" element={<AdminDataManager />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
 
