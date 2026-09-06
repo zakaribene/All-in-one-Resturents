@@ -8,6 +8,8 @@ const RestaurantSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
   plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Free' },
   status: { type: String, enum: ['active', 'suspended'], default: 'active' },
+  lastLoginAt: { type: Date, default: null },
+  lastSeenAt: { type: Date, default: null },
   hue: { type: Number, default: () => Math.floor(Math.random() * 360) },
   logoUrl: { type: String, default: '' },
   coverUrl: { type: String, default: '' },

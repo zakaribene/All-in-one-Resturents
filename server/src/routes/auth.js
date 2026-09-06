@@ -26,6 +26,8 @@ router.post('/restaurant/login', async (req, res) => {
   if (restaurant.status === 'suspended') return res.status(403).json({ error: 'This restaurant account is suspended' });
   const ok = await bcrypt.compare(password, restaurant.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  const now = new Date();
+  await Restaurant.updateOne({ _id: restaurant._id }, { $set: { lastLoginAt: now, lastSeenAt: now } });
   const token = signToken({ role: 'restaurant', id: restaurant._id.toString() });
   res.json({
     token,
@@ -45,6 +47,8 @@ router.post('/staff/login', async (req, res) => {
   if (staff.restaurant.status === 'suspended') return res.status(403).json({ error: 'This restaurant account is suspended' });
   const ok = await bcrypt.compare(password, staff.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  const now = new Date();
+  await Restaurant.updateOne({ _id: staff.restaurant._id }, { $set: { lastLoginAt: now, lastSeenAt: now } });
   const token = signToken({
     role: 'staff', id: staff._id.toString(), restaurantId: staff.restaurant._id.toString(), permissions: staff.permissions,
   });

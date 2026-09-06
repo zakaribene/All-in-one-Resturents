@@ -1,7 +1,21 @@
 const jwt = require('jsonwebtoken');
+const Restaurant = require('../models/Restaurant');
 
 function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+}
+
+// Lightweight "online" heartbeat. Called on every authenticated restaurant/staff
+// request but only writes when the stored value is older than a minute, so it
+// costs at most one tiny update per restaurant per minute. Fire-and-forget:
+// never blocks or fails the request.
+const HEARTBEAT_MS = 40 * 1000;
+function touchRestaurantLastSeen(restaurantId) {
+  const cutoff = new Date(Date.now() - HEARTBEAT_MS);
+  Restaurant.updateOne(
+    { _id: restaurantId, $or: [{ lastSeenAt: { $lt: cutoff } }, { lastSeenAt: null }] },
+    { $set: { lastSeenAt: new Date() } }
+  ).catch(() => {});
 }
 
 function authRequired(req, res, next) {
@@ -36,10 +50,14 @@ function requireRestaurant(req, res, next) {
 // stashes the staff's own id + permissions for the permission-check middlewares below.
 function requireRestaurantOrStaff(req, res, next) {
   authRequired(req, res, () => {
-    if (req.auth.role === 'restaurant') return next();
+    if (req.auth.role === 'restaurant') {
+      touchRestaurantLastSeen(req.auth.id);
+      return next();
+    }
     if (req.auth.role === 'staff') {
       req.auth.staffId = req.auth.id;
       req.auth.id = req.auth.restaurantId;
+      touchRestaurantLastSeen(req.auth.id);
       return next();
     }
     return res.status(403).json({ error: 'Restaurant only' });

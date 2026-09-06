@@ -97,6 +97,7 @@ router.get('/restaurants', async (req, res) => {
     return {
       id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username, plan: r.plan, status: r.status,
       hue: r.hue, orders: m.orders, revenue: '$' + m.revenue.toFixed(2),
+      lastLoginAt: r.lastLoginAt || null, lastSeenAt: r.lastSeenAt || null,
     };
   }));
 });
@@ -131,7 +132,45 @@ router.get('/restaurants/:id', async (req, res) => {
     id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username,
     plan: r.plan, status: r.status, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
     orders: orderCount, revenue: '$' + (revenueAgg[0]?.sum || 0).toFixed(2), createdAt: r.createdAt,
+    lastLoginAt: r.lastLoginAt || null, lastSeenAt: r.lastSeenAt || null,
   });
+});
+
+router.patch('/restaurants/:id', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const { name, city, ownerName, username, plan } = req.body || {};
+
+  if (username != null) {
+    const clean = String(username).trim().toLowerCase();
+    if (!clean) return res.status(400).json({ error: 'Username cannot be empty' });
+    if (clean !== r.username) {
+      const taken = await Restaurant.findOne({ username: clean, _id: { $ne: r._id } });
+      if (taken) return res.status(409).json({ error: 'Username already taken' });
+      r.username = clean;
+    }
+  }
+  if (name != null) {
+    if (!String(name).trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+    r.name = String(name).trim();
+  }
+  if (city != null) r.city = String(city).trim();
+  if (ownerName != null) r.ownerName = String(ownerName).trim();
+
+  let planChanged = false;
+  if (plan != null && plan !== r.plan) {
+    if (!['Free', 'Basic', 'Pro'].includes(plan)) return res.status(400).json({ error: 'plan must be Free, Basic, or Pro' });
+    r.plan = plan;
+    planChanged = true;
+  }
+
+  await r.save();
+  await Activity.create({
+    restaurant: r._id,
+    message: planChanged ? `${r.name} moved to ${r.plan} plan by admin` : `${r.name} details updated by admin`,
+    dot: '#8B5CF6',
+  });
+  res.json({ ok: true });
 });
 
 router.patch('/restaurants/:id/toggle', async (req, res) => {
