@@ -79,8 +79,8 @@ export default function Notifications() {
 
         <div>
           <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted-3)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 12 }}>Live preview · Sida ay u muuqan doonto</div>
-          <div style={{ background: 'var(--text)', borderRadius: 20, padding: 22, boxShadow: '0 20px 50px -20px rgba(16,26,43,.5)' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, background: '#fff', borderRadius: 14, padding: 16 }}>
+          <div style={{ background: '#111114', borderRadius: 20, padding: 22, boxShadow: '0 20px 50px -20px rgba(16,26,43,.5)' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, background: 'var(--surface)', borderRadius: 14, padding: 16 }}>
               <div style={{ width: 42, height: 42, borderRadius: 11, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 19, flex: '0 0 auto' }}>M</div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>

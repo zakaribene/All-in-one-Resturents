@@ -52,7 +52,7 @@ export default function Sms() {
         <p className="page-sub">Isku xir Hormuud SMS API maqaayad kasta · Connect Hormuud SMS per restaurant.</p>
       </div>
 
-      <div style={{ background: 'linear-gradient(180deg,#F8FAFC,#fff)', border: '1px dashed #C7D2E0', borderRadius: 16, padding: 26 }}>
+      <div style={{ background: 'var(--panel)', border: '1px dashed var(--border-strong)', borderRadius: 16, padding: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <span style={{ fontWeight: 800, fontSize: 16 }}>Hormuud SMS API</span>
           <select className="field-input" style={{ maxWidth: 260 }} value={restaurantId} onChange={(e) => setRestaurantId(e.target.value)}>
@@ -64,7 +64,7 @@ export default function Sms() {
         </p>
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px', maxWidth: 460 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px', maxWidth: 460 }}>
           <div style={{ width: 38, height: 38, borderRadius: 9, background: '#EEF3FF', color: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flex: '0 0 auto' }}>SMS</div>
           <div style={{ minWidth: 140, flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 14 }}>Hormuud</div>

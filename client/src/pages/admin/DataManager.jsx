@@ -97,7 +97,7 @@ export default function DataManager() {
         </p>
       </div>
 
-      <div style={{ background: 'linear-gradient(180deg,#F8FAFC,#fff)', border: '1px dashed #C7D2E0', borderRadius: 16, padding: 26 }}>
+      <div style={{ background: 'var(--panel)', border: '1px dashed var(--border-strong)', borderRadius: 16, padding: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <span style={{ fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             <Database size={17} strokeWidth={2.25} /> Maqaayadda · Restaurant
@@ -124,7 +124,7 @@ export default function DataManager() {
                   key={it.id}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, cursor: 'pointer',
-                    background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px',
+                    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px',
                     opacity: it.count ? 1 : 0.55,
                   }}
                 >
