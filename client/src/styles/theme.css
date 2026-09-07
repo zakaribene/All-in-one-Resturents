@@ -232,3 +232,110 @@ input, select, textarea { font-family: inherit; }
   #receipt-print, #receipt-print * { visibility: visible; }
   #receipt-print { position: absolute; left: 0; top: 0; width: 80mm; font-size: 12px; }
 }
+
+/* ============================================================
+   Responsive — sidebar drawer, tighter spacing, mobile sheets
+   ============================================================ */
+.nav-toggle {
+  display: none;
+  width: 38px; height: 38px; flex: 0 0 auto; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted-4);
+  align-items: center; justify-content: center; cursor: pointer;
+}
+.sidebar-backdrop { display: none; }
+
+/* Notification dropdown — desktop sizing (mobile turns it into a sheet below) */
+.notif-panel { width: 340px; max-height: 440px; display: flex; flex-direction: column; }
+.notif-handle { display: none; }
+.dropdown-backdrop { display: none; }
+
+@keyframes sheetIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 860px) {
+  .app-root { height: 100dvh; }
+
+  /* TopBar becomes the anchor for the drawer toggle */
+  .nav-toggle { display: inline-flex; }
+
+  /* Sidebar slides in from the left as an overlay */
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 130;
+    width: min(82vw, 300px); flex-basis: auto;
+    transform: translateX(-100%);
+    transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    box-shadow: 0 0 70px -12px rgba(8,12,20,.55);
+  }
+  .sidebar.is-open { transform: none; }
+
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 120;
+    background: rgba(8,12,20,.48); backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  }
+  .sidebar-backdrop.is-open { opacity: 1; pointer-events: auto; }
+
+  .main-area, .main-area.tight { padding: 18px 16px; overflow-x: auto; }
+  .page-title { font-size: 20px; }
+  .page-sub { font-size: 12.5px; }
+
+  /* Dropdowns dock to the bottom as a readable sheet */
+  .dropdown-panel {
+    position: fixed !important;
+    top: auto !important; bottom: 0 !important;
+    left: 0 !important; right: 0 !important;
+    width: auto !important; max-height: 78vh !important;
+    border-radius: 22px 22px 0 0;
+    animation: sheetIn .24s cubic-bezier(.2,.8,.2,1);
+  }
+  .notif-panel { max-height: 78vh !important; }
+
+  .notif-handle {
+    display: block; width: 40px; height: 4px; border-radius: 99px;
+    background: var(--border-strong); margin: 10px auto 2px;
+  }
+
+  .dropdown-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 70;
+    background: rgba(8,12,20,.4); backdrop-filter: blur(1px);
+    animation: sheetIn .2s ease;
+  }
+}
+
+@media (max-width: 760px) {
+  /* Card / stat / form-and-aside grids collapse to a single column.
+     auto-fill / auto-fit tracks are already fluid, so leave them alone. */
+  .main-area [style*="grid-template-columns: repeat"]:not([style*="auto-f"]),
+  .main-area [style*="grid-template-columns: minmax(0, 1fr) minmax(0,"],
+  .main-area [style*="grid-template-columns: 1fr 360px"],
+  .main-area [style*="grid-template-columns: 1fr 380px"],
+  .main-area [style*="grid-template-columns: 1.4fr 1fr"],
+  .main-area [style*="grid-template-columns: 300px 1fr"],
+  .main-area [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Fake-table blocks (header row + data rows sharing a fractional track
+     list): keep the columns, but let the block scroll sideways instead of
+     crushing every cell. Overrides the inline `overflow: hidden` wrapper. */
+  .main-area div[style*="border-radius: 16px"][style*="overflow: hidden"]:has(> [style*="grid-template-columns:"][style*="fr "]) {
+    overflow-x: auto !important;
+  }
+  .main-area [style*="grid-template-columns:"][style*="fr .8fr"],
+  .main-area [style*="grid-template-columns:"][style*="fr 1.1fr"],
+  .main-area [style*="grid-template-columns:"][style*="fr 1.2fr 1"],
+  .main-area [style*="grid-template-columns:"][style*="fr 1.4fr 1"],
+  .main-area [style*="grid-template-columns:"][style*="fr 1.5fr 2"],
+  .main-area [style*="grid-template-columns:"][style*="fr 2.1fr"],
+  .main-area [style*="grid-template-columns:"][style*="fr 2.2fr"],
+  .main-area [style*="grid-template-columns:"][style*="fr 1.8fr"],
+  .main-area [style*="grid-template-columns:"][style*="40px"] {
+    min-width: 660px;
+  }
+}
+
+@media (max-width: 520px) {
+  .main-area, .main-area.tight { padding: 14px 12px; }
+  .hide-xs { display: none !important; }
+  .page-title { font-size: 19px; }
+  .btn { padding: 10px 15px; font-size: 13px; }
+}

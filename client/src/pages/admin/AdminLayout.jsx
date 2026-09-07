@@ -25,6 +25,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const { toasts, addToast, dismissToast } = useToasts();
   const { confirm, confirmNode } = useConfirm();
   const active = NAV.find((n) => location.pathname.includes(n.id))?.id || 'overview';
@@ -33,9 +34,13 @@ export default function AdminLayout() {
     api.get('/admin/me').then((r) => setMe(r.data));
   }, []);
 
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
+
   return (
     <div className="app-root">
       <TopBar
+        onMenu={() => setNavOpen(true)}
         right={
           <>
             <ThemeToggle />
@@ -47,7 +52,7 @@ export default function AdminLayout() {
                 }}>
                   {(me?.name || 'SA').split(' ').map((w) => w[0]).slice(0, 2).join('')}
                 </div>
-                Profile
+                <span className="hide-xs">Profile</span>
               </button>
               {profileOpen && <AdminProfileMenu me={me} onClose={() => setProfileOpen(false)} />}
             </div>
@@ -59,6 +64,8 @@ export default function AdminLayout() {
           eyebrow="Admin Console"
           navItems={NAV}
           activeId={active}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
           onSelect={(id) => navigate('/admin/' + id)}
           footer={
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, background: 'var(--panel-2)', borderRadius: 12 }}>

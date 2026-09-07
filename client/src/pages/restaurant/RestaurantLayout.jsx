@@ -27,6 +27,7 @@ export default function RestaurantLayout() {
   const [posLocked, setPosLocked] = useState(false);
   const posInitRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [ringing, setRinging] = useState(false);
@@ -54,6 +55,9 @@ export default function RestaurantLayout() {
   useEffect(() => {
     api.get('/restaurant/me').then((r) => setMe(r.data));
   }, []);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
 
   // POS starts locked for any staff account that has the POS page, so the
   // lock survives navigating away and back (and idle-lock, below).
@@ -122,6 +126,7 @@ export default function RestaurantLayout() {
   return (
     <div className="app-root">
       <TopBar
+        onMenu={() => setNavOpen(true)}
         right={
           <>
             <ThemeToggle />
@@ -134,7 +139,7 @@ export default function RestaurantLayout() {
                 }}>
                   {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me?.name?.[0] || '·')}
                 </div>
-                Profile
+                <span className="hide-xs">Profile</span>
               </button>
               {profileOpen && <ProfileMenu me={me} setMe={setMe} onClose={() => setProfileOpen(false)} />}
             </div>
@@ -167,6 +172,8 @@ export default function RestaurantLayout() {
           }
           navItems={visibleNav}
           activeId={active}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
           onSelect={(id) => navigate('/dashboard/' + id)}
         />
         <main className="main-area tight">
