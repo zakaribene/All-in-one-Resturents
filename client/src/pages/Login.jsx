@@ -48,7 +48,6 @@ export default function Login() {
     if (restaurant.ok) navigate('/dashboard');
     else setError(restaurant.error || 'Isticmaale ama furaha sirta ayaa qalad · Invalid username or password');
   }
-
   return (
     <div className="login-shell">
       <style>{LOGIN_CSS}</style>
@@ -64,7 +63,7 @@ export default function Login() {
             <div className="login-mark">M</div>
             <div>
               <div className="login-mark__name">Miis</div>
-              <div className="login-mark__sub">Restaurant OS</div>
+              <div className="login-mark__sub">Restaurant POS</div>
             </div>
           </div>
 
