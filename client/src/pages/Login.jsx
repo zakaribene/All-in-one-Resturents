@@ -86,7 +86,7 @@ export default function Login() {
             </ul>
           </div>
 
-          <div className="login-brand__foot">© {new Date().getFullYear()} Miis · Tabaarak</div>
+          <div className="login-brand__foot">{new Date().getFullYear()}.miis.ZackTech</div>
         </div>
       </aside>
 
