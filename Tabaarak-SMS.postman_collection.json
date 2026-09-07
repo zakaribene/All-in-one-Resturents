@@ -12,7 +12,6 @@
     { "key": "testPhone", "value": "615093067" }
   ],
   "item": [
-    
     {
       "name": "1. Login (SMSLogin)",
       "event": [
@@ -33,6 +32,7 @@
           }
         }
       ],
+      
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
