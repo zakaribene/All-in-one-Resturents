@@ -46,10 +46,10 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
           {order.items.map((it, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 13 }}>
               <div>
-                <div>{it.name}</div>
+                <div style={{ fontWeight: 700 }}>{it.name}</div>
                 <div style={{ fontSize: 11, color: '#000', fontWeight: 700 }}>${it.price.toFixed(2)} × {it.qty}</div>
               </div>
-              <span>${(it.qty * it.price).toFixed(2)}</span>
+              <span style={{ fontWeight: 700 }}>${(it.qty * it.price).toFixed(2)}</span>
             </div>
           ))}
         </div>
