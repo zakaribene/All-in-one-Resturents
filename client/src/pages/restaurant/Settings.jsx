@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Plus, Trash2, Receipt } from 'lucide-react';
+import { Plus, Trash2, Receipt, Heart } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 
 export default function Settings() {
   const { me, setMe, addToast } = useOutletContext();
   const [items, setItems] = useState(() => (me?.receiptPaymentNumbers?.length ? me.receiptPaymentNumbers : [{ label: '', number: '' }]));
+  const [thankYouMessage, setThankYouMessage] = useState(me?.receiptThankYouMessage || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -19,9 +20,10 @@ export default function Settings() {
     setSaving(true); setError('');
     try {
       const clean = items.map((it) => ({ label: it.label.trim(), number: it.number.trim() })).filter((it) => it.label && it.number);
-      const { data } = await api.patch('/restaurant/settings/receipt-payment-numbers', { items: clean });
+      const { data } = await api.patch('/restaurant/settings/receipt', { items: clean, thankYouMessage: thankYouMessage.trim() });
       setItems(data.receiptPaymentNumbers.length ? data.receiptPaymentNumbers : [{ label: '', number: '' }]);
-      setMe((prev) => ({ ...prev, receiptPaymentNumbers: data.receiptPaymentNumbers }));
+      setThankYouMessage(data.receiptThankYouMessage || '');
+      setMe((prev) => ({ ...prev, receiptPaymentNumbers: data.receiptPaymentNumbers, receiptThankYouMessage: data.receiptThankYouMessage }));
       addToast({ title: 'Waa la keydiyay · Settings saved', tone: 'success' });
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to save'));
@@ -44,7 +46,7 @@ export default function Settings() {
           <Receipt size={16} strokeWidth={2.25} /> Lambarrada rasiitka · Receipt payment numbers
         </div>
         <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>
-          Waxay ka muuqan doonaan hoosta rasiitka oo dhan · Shown at the bottom of every printed receipt. Tusaale · Example: EVC → 64848, eDahab → 77484, Premier Wallet → 38457484
+          Waxay ka muuqan doonaan kor rasiitka, hoosta magaca maqaayadda · Shown near the top of every printed receipt, right under your name. Tusaale · Example: EVC → 64848, eDahab → 77484, Premier Wallet → 38457484
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
@@ -60,9 +62,23 @@ export default function Settings() {
           ))}
         </div>
 
-        <button className="btn-outline btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 18 }} onClick={addRow}>
+        <button className="btn-outline btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 22 }} onClick={addRow}>
           <Plus size={14} strokeWidth={2.25} /> Ku dar saf · Add row
         </button>
+
+        <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 18, marginBottom: 18 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Heart size={16} strokeWidth={2.25} /> Fariinta xarunta · Closing message
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 12 }}>
+            Waxay ka muuqan doontaa hoosta ugu dambeysa rasiitka · Shown at the very bottom of every printed receipt. Tusaale · Example: "Mahadsanid, soo noqosho wanaagsan!"
+          </div>
+          <textarea
+            className="field-input" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }}
+            maxLength={200} placeholder="Mahadsanid, soo noqosho wanaagsan!"
+            value={thankYouMessage} onChange={(e) => setThankYouMessage(e.target.value)}
+          />
+        </div>
 
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 

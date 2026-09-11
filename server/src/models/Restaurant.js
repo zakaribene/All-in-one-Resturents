@@ -18,6 +18,7 @@ const RestaurantSchema = new mongoose.Schema({
     type: [{ label: { type: String, required: true, trim: true }, number: { type: String, required: true, trim: true } }],
     default: [],
   },
+  receiptThankYouMessage: { type: String, default: '', trim: true },
 }, { timestamps: true });
 
 RestaurantSchema.methods.nextOrderNumber = function () {

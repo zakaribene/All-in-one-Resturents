@@ -58,7 +58,7 @@ router.get('/me', async (req, res) => {
     hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
     role: req.auth.role, permissions: req.auth.role === 'staff' ? req.auth.permissions : null, staffName,
     posPinRequired, hasPosPin,
-    receiptPaymentNumbers: r.receiptPaymentNumbers || [],
+    receiptPaymentNumbers: r.receiptPaymentNumbers || [], receiptThankYouMessage: r.receiptThankYouMessage || '',
     // Payments/SMS only show up once the super admin has connected an account for this restaurant.
     paymentsEnabled: !!hasPaymentAccount, smsEnabled: !!hasSmsAccount,
   });
@@ -74,15 +74,21 @@ router.post('/upload', requireOwnerOnly, upload.single('image'), async (req, res
   res.json({ url });
 });
 
-// The list of pay-by-transfer numbers (EVC, eDahab, etc.) shown at the
-// bottom of every printed receipt, so customers know where to send money.
-router.patch('/settings/receipt-payment-numbers', requireOwnerOnly, async (req, res) => {
+// Receipt customization: the pay-by-transfer numbers (EVC, eDahab, etc.) shown
+// under the header of every printed receipt, and the closing thank-you line
+// shown at the very bottom.
+router.patch('/settings/receipt', requireOwnerOnly, async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   const clean = items
     .map((it) => ({ label: String(it?.label || '').trim(), number: String(it?.number || '').trim() }))
     .filter((it) => it.label && it.number);
-  const r = await Restaurant.findByIdAndUpdate(req.auth.id, { receiptPaymentNumbers: clean }, { new: true }).lean();
-  res.json({ receiptPaymentNumbers: r.receiptPaymentNumbers || [] });
+  const thankYouMessage = String(req.body?.thankYouMessage || '').trim().slice(0, 200);
+  const r = await Restaurant.findByIdAndUpdate(
+    req.auth.id,
+    { receiptPaymentNumbers: clean, receiptThankYouMessage: thankYouMessage },
+    { new: true },
+  ).lean();
+  res.json({ receiptPaymentNumbers: r.receiptPaymentNumbers || [], receiptThankYouMessage: r.receiptThankYouMessage || '' });
 });
 
 // ---- Categories ----
@@ -388,9 +394,12 @@ router.post('/pos/unlock', requirePermission('pos'), async (req, res) => {
 });
 
 router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
-  const { phone, note, items, paymentProvider, payNow, clientRequestId, discount } = req.body || {};
+  const { phone, note, waiterName, items, paymentProvider, payNow, clientRequestId, discount } = req.body || {};
   const cleanPhone = String(phone || '').trim();
   const cleanNote = String(note || '').trim();
+  // Whoever is actually serving the table may not be who's logged into the POS
+  // (shared logins, owner covering a shift, etc.) — let them type the real name.
+  const cleanWaiterName = String(waiterName || '').trim();
   // Phone is only needed to charge the customer online — manual/pay-at-table orders don't require it.
   if (payNow && !cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
@@ -431,7 +440,7 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
     const order = await Order.create({
       restaurant: req.auth.id, number, channel: 'pos',
       phone: cleanPhone, note: cleanNote, items: orderItems, total, discount: discountAmount, status: 'new',
-      createdByName: collector.name, createdByRole: collector.role,
+      createdByName: cleanWaiterName || collector.name, createdByRole: collector.role,
     });
     await bumpSold();
     const payload = mapOrder(order.toObject());
@@ -464,7 +473,7 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
     order = await Order.create({
       restaurant: req.auth.id, number, channel: 'pos',
       phone: cleanPhone, note: cleanNote, items: orderItems, total, discount: discountAmount, status: 'new',
-      createdByName: collector.name, createdByRole: collector.role,
+      createdByName: cleanWaiterName || collector.name, createdByRole: collector.role,
       payment: {
         method: 'waafipay', provider: account.provider, status: 'pending',
         amount: total, currency: account.currency, clientRequestId: clientRequestId || null,

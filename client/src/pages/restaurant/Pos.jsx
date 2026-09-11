@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, Plus, Minus, Trash2, Phone, StickyNote, Wallet, HandCoins, Lock } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import ReceiptModal from '../../components/ReceiptModal';
 
@@ -47,7 +47,7 @@ export default function Pos() {
   const [discount, setDiscount] = useState('');
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState(false);
-  const [note, setNote] = useState('');
+  const [waiterName, setWaiterName] = useState('');
   const [payNow, setPayNow] = useState(true);
   const [provider, setProvider] = useState(null);
   const [stage, setStage] = useState('cart');
@@ -139,7 +139,7 @@ export default function Pos() {
   }
 
   function resetOrder() {
-    setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setNote(''); setStage('cart');
+    setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setWaiterName(''); setStage('cart');
     setDeclineInfo(null); setPlaceError(''); setClientRequestId('');
   }
 
@@ -153,7 +153,7 @@ export default function Pos() {
       const crid = useOnlinePay ? (clientRequestId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))) : undefined;
       if (crid) setClientRequestId(crid);
       const { data } = await api.post('/restaurant/pos/orders', {
-        phone: phone.trim(), note: note.trim(), items, discount: discountAmount,
+        phone: phone.trim(), waiterName: waiterName.trim(), items, discount: discountAmount,
         payNow: useOnlinePay, paymentProvider: useOnlinePay ? provider : undefined,
         clientRequestId: crid,
       }, { timeout: 50000 });
@@ -344,12 +344,12 @@ export default function Pos() {
               </div>
               {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
 
-              <label className="field-label">Faah faahin · Note (optional)</label>
+              <label className="field-label">Magaca qofka dalabka qaadaya · Waiter name (ikhtiyaari · optional)</label>
               <div style={{ position: 'relative', marginBottom: 14 }}>
-                <StickyNote size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--muted-3)' }} />
-                <textarea
-                  className="field-input" style={{ paddingLeft: 32, minHeight: 50, resize: 'vertical', fontFamily: 'inherit' }}
-                  value={note} onChange={(e) => setNote(e.target.value)}
+                <User size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+                <input
+                  className="field-input" style={{ paddingLeft: 32 }}
+                  placeholder="Tusaale · e.g. Ayub" value={waiterName} onChange={(e) => setWaiterName(e.target.value)}
                 />
               </div>
 
