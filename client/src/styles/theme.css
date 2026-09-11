@@ -227,10 +227,13 @@ input, select, textarea { font-family: inherit; }
 }
 
 @media print {
-  @page { size: 80mm auto; margin: 4mm; }
+  @page { size: 80mm auto; margin: 1mm; }
   body * { visibility: hidden; }
   #receipt-print, #receipt-print * { visibility: visible; }
-  #receipt-print { position: absolute; left: 0; top: 0; width: 80mm; font-size: 12px; }
+  #receipt-print {
+    position: absolute; left: 0; top: 0; margin: 0; padding: 0; width: 80mm; font-size: 13px;
+    font-family: 'Courier New', Courier, monospace;
+  }
 }
 
 /* ============================================================
