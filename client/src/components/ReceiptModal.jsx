@@ -5,7 +5,7 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
 
   return (
     <Modal onClose={onClose} width={360}>
-      <div id="receipt-print" style={{ fontFamily: 'var(--mono)' }}>
+      <div id="receipt-print" style={{ fontFamily: "'Courier New', Courier, monospace" }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 14 }}>
           <div style={{
             width: 64, height: 64, borderRadius: 18, background: `hsl(${restaurant?.hue ?? 212} 65% 95%)`, color: `hsl(${restaurant?.hue ?? 212} 55% 42%)`,
@@ -18,18 +18,18 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
         </div>
 
         {!!restaurant?.receiptPaymentNumbers?.length && (
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 14, textAlign: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {restaurant.receiptPaymentNumbers.map((p, i) => (
-                <div key={i} style={{ fontSize: 12.5 }}>
-                  <span style={{ fontWeight: 800 }}>{p.label}:</span> {p.number}
+                <div key={i} style={{ fontSize: 13, fontWeight: 800 }}>
+                  {p.label}: {p.number}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <div style={{ borderTop: '1px dashed var(--border-strong)', borderBottom: '1px dashed var(--border-strong)', padding: '12px 0', marginBottom: 12 }}>
+        <div style={{ borderTop: '1px solid var(--text)', borderBottom: '1px solid var(--text)', padding: '12px 0', marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Order #{order.number}</div>
           {order.phone && (
             <div style={{ fontSize: 13, fontWeight: 700 }}>
@@ -47,14 +47,14 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 13 }}>
               <div>
                 <div>{it.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>${it.price.toFixed(2)} × {it.qty}</div>
+                <div style={{ fontSize: 11, color: '#000', fontWeight: 700 }}>${it.price.toFixed(2)} × {it.qty}</div>
               </div>
               <span>${(it.qty * it.price).toFixed(2)}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ borderTop: '1px dashed var(--border-strong)', paddingTop: 10 }}>
+        <div style={{ borderTop: '1px solid var(--text)', paddingTop: 10 }}>
           {order.discount > 0 && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--muted-2)', marginBottom: 4 }}>
@@ -74,7 +74,7 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
         </div>
 
         {!!restaurant?.receiptThankYouMessage && (
-          <div style={{ borderTop: '1px dashed var(--border-strong)', marginTop: 12, paddingTop: 10, textAlign: 'center', fontSize: 12.5, color: 'var(--muted-1)' }}>
+          <div style={{ borderTop: '1px solid var(--text)', marginTop: 12, paddingTop: 10, textAlign: 'center', fontSize: 12.5, color: 'var(--muted-1)' }}>
             {restaurant.receiptThankYouMessage}
           </div>
         )}
