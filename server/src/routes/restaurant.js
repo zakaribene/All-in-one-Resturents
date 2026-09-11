@@ -402,6 +402,7 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
   const cleanWaiterName = String(waiterName || '').trim();
   // Phone is only needed to charge the customer online — manual/pay-at-table orders don't require it.
   if (payNow && !cleanPhone) return res.status(400).json({ error: 'Phone number is required' });
+  if (!cleanWaiterName) return res.status(400).json({ error: 'Waiter name is required' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
 
   const restaurant = await Restaurant.findById(req.auth.id);

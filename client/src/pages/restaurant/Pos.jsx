@@ -48,6 +48,7 @@ export default function Pos() {
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState(false);
   const [waiterName, setWaiterName] = useState('');
+  const [waiterNameError, setWaiterNameError] = useState(false);
   const [payNow, setPayNow] = useState(true);
   const [provider, setProvider] = useState(null);
   const [stage, setStage] = useState('cart');
@@ -139,13 +140,14 @@ export default function Pos() {
   }
 
   function resetOrder() {
-    setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setWaiterName(''); setStage('cart');
+    setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setWaiterName(''); setWaiterNameError(false); setStage('cart');
     setDeclineInfo(null); setPlaceError(''); setClientRequestId('');
   }
 
   async function submit() {
     if (!cartLines.length) return;
     if (useOnlinePay && !phone.trim()) { setPhoneError(true); return; }
+    if (!waiterName.trim()) { setWaiterNameError(true); return; }
     setPlaceError(''); setBusy(true);
     if (useOnlinePay) setStage('paying');
     try {
@@ -344,14 +346,16 @@ export default function Pos() {
               </div>
               {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
 
-              <label className="field-label">Magaca qofka dalabka qaadaya · Waiter name (ikhtiyaari · optional)</label>
-              <div style={{ position: 'relative', marginBottom: 14 }}>
+              <label className="field-label">Waiter name *</label>
+              <div style={{ position: 'relative', marginBottom: waiterNameError ? 4 : 14 }}>
                 <User size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
                 <input
-                  className="field-input" style={{ paddingLeft: 32 }}
-                  placeholder="Tusaale · e.g. Ayub" value={waiterName} onChange={(e) => setWaiterName(e.target.value)}
+                  className={'field-input' + (waiterNameError ? ' error' : '')} style={{ paddingLeft: 32 }}
+                  placeholder="Tusaale · e.g. Ayub" value={waiterName}
+                  onChange={(e) => { setWaiterName(e.target.value); setWaiterNameError(false); }}
                 />
               </div>
+              {waiterNameError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Waiter name is required</div>}
 
               {!!paymentOptions.length && (
                 <>
