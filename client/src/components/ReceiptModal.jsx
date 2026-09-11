@@ -14,7 +14,7 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
             {restaurant?.logoUrl ? <img src={restaurant.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (restaurant?.name?.[0] || 'M')}
           </div>
           <div style={{ fontWeight: 800, fontSize: 15, fontFamily: 'var(--font)' }}>{restaurant?.name}</div>
-          <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>{dateStr}</div>
+          <div style={{ fontSize: 11, color: '#000', fontWeight: 700 }}>{dateStr}</div>
         </div>
 
         {!!restaurant?.receiptPaymentNumbers?.length && (
@@ -38,7 +38,7 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
           )}
           {order.note && <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 2 }}>Note: {order.note}</div>}
           {order.createdByName && (
-            <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 2 }}>Taken by: {order.createdByName}</div>
+            <div style={{ fontSize: 12, color: '#000', fontWeight: 700, marginTop: 2 }}>Taken by: {order.createdByName}</div>
           )}
         </div>
 
@@ -74,7 +74,7 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
         </div>
 
         {!!restaurant?.receiptThankYouMessage && (
-          <div style={{ borderTop: '1px solid var(--text)', marginTop: 12, paddingTop: 10, textAlign: 'center', fontSize: 12.5, color: 'var(--muted-1)' }}>
+          <div style={{ borderTop: '1px solid var(--text)', marginTop: 12, paddingTop: 10, textAlign: 'center', fontSize: 12.5, color: '#000', fontWeight: 700 }}>
             {restaurant.receiptThankYouMessage}
           </div>
         )}
