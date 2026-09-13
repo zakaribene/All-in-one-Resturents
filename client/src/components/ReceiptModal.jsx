@@ -29,7 +29,7 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
           </div>
         )}
 
-        <div style={{ borderTop: '1px solid var(--text)', borderBottom: '1px solid var(--text)', padding: '12px 0', marginBottom: 12 }}>
+        <div style={{ borderBottom: '1px solid var(--text)', padding: '12px 0', marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Order #{order.number}</div>
           {order.phone && (
             <div style={{ fontSize: 13, fontWeight: 700 }}>
@@ -42,14 +42,26 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 28px 52px 58px', gap: 6,
+            borderBottom: '1px solid var(--text)', paddingBottom: 6, marginBottom: 6,
+            fontSize: 12, fontWeight: 900, letterSpacing: 0.4, textTransform: 'uppercase', color: '#000',
+          }}>
+            <span>Product Name</span>
+            <span style={{ textAlign: 'center' }}>Qty</span>
+            <span style={{ textAlign: 'right' }}>Price</span>
+            <span style={{ textAlign: 'right' }}>Total</span>
+          </div>
           {order.items.map((it, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 13 }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{it.name}</div>
-                <div style={{ fontSize: 11, color: '#000', fontWeight: 700 }}>${it.price.toFixed(2)} × {it.qty}</div>
-              </div>
-              <span style={{ fontWeight: 700 }}>${(it.qty * it.price).toFixed(2)}</span>
+            <div key={i} style={{
+              display: 'grid', gridTemplateColumns: '1fr 28px 52px 58px', gap: 6,
+              alignItems: 'start', fontSize: 13, fontWeight: 700, padding: '4px 0',
+            }}>
+              <span>{it.name}</span>
+              <span style={{ textAlign: 'center' }}>{it.qty}</span>
+              <span style={{ textAlign: 'right' }}>${it.price.toFixed(2)}</span>
+              <span style={{ textAlign: 'right' }}>${(it.qty * it.price).toFixed(2)}</span>
             </div>
           ))}
         </div>

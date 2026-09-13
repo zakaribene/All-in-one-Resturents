@@ -231,8 +231,8 @@ input, select, textarea { font-family: inherit; }
   body * { visibility: hidden; }
   #receipt-print, #receipt-print * { visibility: visible; }
   #receipt-print {
-    position: absolute; left: 0; top: 0; margin: 0; padding: 0; width: 80mm; font-size: 13px;
-    font-family: 'Courier New', Courier, monospace;
+    position: absolute; left: 0; top: 0; margin: 0; padding: 0; width: 80mm; font-size: 15px;
+    font-family: 'Courier New', Courier, monospace; font-weight: 700; color: #000;
   }
 }
 
