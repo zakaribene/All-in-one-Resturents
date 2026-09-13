@@ -803,8 +803,6 @@ const SALES_COLUMNS = [
   { header: 'Order', headerSo: 'Dalab', key: 'number', w: 1, width: 11, format: 'int' },
   { header: 'Date / Time', headerSo: 'Taariikh', key: 'createdAt', w: 1.9, width: 19, format: 'datetime' },
   { header: 'Channel', headerSo: 'Kanaal', key: 'channel', w: 1.2, width: 13 },
-  { header: 'Table', headerSo: 'Miis', key: 'tableLabel', w: 0.9, width: 9 },
-  { header: 'Phone', headerSo: 'Taleefan', key: 'phone', w: 1.5, width: 16 },
   { header: 'Items', headerSo: 'Alaab', key: 'itemsCount', w: 0.8, width: 8, align: 'right', format: 'int' },
   { header: 'Discount', headerSo: 'Dhimis', key: 'discount', w: 1.1, width: 12, align: 'right', format: 'money' },
   { header: 'Total', headerSo: 'Wadar', key: 'total', w: 1.2, width: 13, align: 'right', format: 'money' },
@@ -820,7 +818,8 @@ async function buildSalesSpec(req) {
   if (range) filter.createdAt = range;
   if (q.orderId && /^\d+$/.test(String(q.orderId).trim())) filter.number = Number(String(q.orderId).trim());
   if (q.channel && q.channel !== 'all') filter.channel = q.channel;
-  if (q.status && q.status !== 'all') filter.status = q.status;
+  if (q.status === 'paid') filter['payment.status'] = 'paid';
+  else if (q.status === 'pending') filter['payment.status'] = { $ne: 'paid' };
   if (q.method && q.method !== 'all') {
     if (q.method === 'online') filter['payment.method'] = 'waafipay';
     else filter['payment.manualMethodName'] = q.method;
@@ -837,14 +836,12 @@ async function buildSalesSpec(req) {
       number: o.number,
       createdAt: o.createdAt,
       channel: CHANNEL_LABEL[o.channel] || o.channel,
-      tableLabel: o.tableLabel || '',
-      phone: o.phone || '',
       itemsCount,
       discount: o.discount || 0,
       total: o.total || 0,
       payMethod: payMethod || '—',
       collectedBy: o.payment?.collectedByName || '',
-      status: o.status,
+      status: o.payment?.status === 'paid' ? 'Paid' : 'Pending',
     };
   });
 
@@ -856,7 +853,7 @@ async function buildSalesSpec(req) {
     `Range: ${from || '—'}  ->  ${to || '—'}`,
     q.orderId ? `Order #${q.orderId}` : null,
     q.channel && q.channel !== 'all' ? `Channel: ${CHANNEL_LABEL[q.channel] || q.channel}` : null,
-    q.status && q.status !== 'all' ? `Status: ${q.status}` : null,
+    q.status && q.status !== 'all' ? `Status: ${q.status === 'paid' ? 'Paid' : 'Pending'}` : null,
     q.method && q.method !== 'all' ? `Payment: ${q.method === 'online' ? 'Online' : q.method}` : null,
   ].filter(Boolean);
 

@@ -204,9 +204,8 @@ function ReportView({ kind }) {
               <Field label="Xaalad · Status">
                 <select className="field-input" value={status} onChange={(e) => setStatus(e.target.value)} style={{ minWidth: 130 }}>
                   <option value="all">Dhammaan · All</option>
-                  <option value="new">new</option>
-                  <option value="preparing">preparing</option>
-                  <option value="done">done</option>
+                  <option value="pending">Sugaya · Pending</option>
+                  <option value="paid">La bixiyay · Paid</option>
                 </select>
               </Field>
             </>
