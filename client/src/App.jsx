@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import AdminLayout from './pages/admin/AdminLayout';
 import Overview from './pages/admin/Overview';
 import Restaurants from './pages/admin/Restaurants';
+import Subscriptions from './pages/admin/Subscriptions';
 import Notifications from './pages/admin/Notifications';
 import Billing from './pages/admin/Billing';
 import AdminSms from './pages/admin/Sms';
@@ -29,6 +30,7 @@ import Staff from './pages/restaurant/Staff';
 import RestaurantSettings from './pages/restaurant/Settings';
 
 import CustomerOrder from './pages/customer/CustomerOrder';
+import SubscriptionExpired from './pages/SubscriptionExpired';
 
 function RequireAdmin({ children }) {
   const { isAuthed } = useAdminAuth();
@@ -45,7 +47,7 @@ function RequireRestaurant({ children }) {
 function DashboardIndex() {
   const { me } = useOutletContext();
   if (!me) return null;
-  const featureAllowed = (id) => (id === 'payments' ? !!me.paymentsEnabled : id === 'sms' ? !!me.smsEnabled : true);
+  const featureAllowed = (id) => (id === 'payments' ? !!me.paymentsEnabled : id === 'sms' ? !!me.smsEnabled : id === 'qr' ? me.orderingEnabled !== false : true);
   if (me.role === 'staff') {
     const first = NAV_PAGES.find((p) => me.permissions?.includes(p.id) && featureAllowed(p.id));
     return <Navigate to={first ? first.id : 'orders'} replace />;
@@ -72,6 +74,7 @@ export default function App() {
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<Overview />} />
               <Route path="restaurants" element={<Restaurants />} />
+              <Route path="subscriptions" element={<Subscriptions />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="billing" element={<Billing />} />
               <Route path="sms" element={<AdminSms />} />
@@ -105,6 +108,7 @@ export default function App() {
             </Route>
 
             <Route path="/order/:code" element={<CustomerOrder />} />
+            <Route path="/subscription-expired" element={<SubscriptionExpired />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

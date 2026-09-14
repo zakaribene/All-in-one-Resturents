@@ -19,6 +19,7 @@ const SmsAccount = require('../models/SmsAccount');
 const SmsLog = require('../models/SmsLog');
 const Staff = require('../models/Staff');
 const { requireRestaurantOrStaff, requirePermission, requireAnyPermission, requireOwnerOnly } = require('../middleware/auth');
+const { subscriptionStatus } = require('../utils/subscription');
 const { makeTableCode } = require('../utils/codes');
 const { emitToRestaurant } = require('../socket');
 const { chargeOrderPayment } = require('../utils/chargeOrder');
@@ -61,6 +62,12 @@ router.get('/me', async (req, res) => {
     receiptPaymentNumbers: r.receiptPaymentNumbers || [], receiptThankYouMessage: r.receiptThankYouMessage || '',
     // Payments/SMS only show up once the super admin has connected an account for this restaurant.
     paymentsEnabled: !!hasPaymentAccount, smsEnabled: !!hasSmsAccount,
+    orderingEnabled: r.orderingEnabled !== false,
+    impersonating: !!req.auth.impersonatedBy,
+    subscriptionStatus: subscriptionStatus(r),
+    graceEndsAt: r.graceEndsAt || null,
+    graceMessage: r.graceMessage || '',
+    graceColor: r.graceColor || 'orange',
   });
 });
 
@@ -89,6 +96,18 @@ router.patch('/settings/receipt', requireOwnerOnly, async (req, res) => {
     { new: true },
   ).lean();
   res.json({ receiptPaymentNumbers: r.receiptPaymentNumbers || [], receiptThankYouMessage: r.receiptThankYouMessage || '' });
+});
+
+router.patch('/settings/password', requireOwnerOnly, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  const r = await Restaurant.findById(req.auth.id);
+  const ok = await bcrypt.compare(currentPassword, r.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+  r.passwordHash = await bcrypt.hash(newPassword, 10);
+  await r.save();
+  res.json({ ok: true });
 });
 
 // ---- Categories ----
@@ -314,36 +333,6 @@ router.get('/payments', requirePermission('payments'), async (req, res) => {
     id: o._id, number: o.number, phone: o.phone, total: o.total, createdAt: o.createdAt, updatedAt: o.updatedAt,
     payment: o.payment,
   })));
-});
-
-router.post('/orders/simulate', requirePermission('orders'), async (req, res) => {
-  const restaurant = await Restaurant.findById(req.auth.id);
-  const products = await Product.find({ restaurant: req.auth.id, status: 'active' }).lean();
-  const tables = await Table.find({ restaurant: req.auth.id }).lean();
-  if (!products.length) return res.status(400).json({ error: 'Add products first' });
-
-  const pickCount = 1 + Math.floor(Math.random() * 2);
-  const shuffled = [...products].sort(() => Math.random() - 0.5).slice(0, pickCount);
-  const items = shuffled.map(p => ({ name: p.nameEn, qty: 1 + Math.floor(Math.random() * 2), price: p.price }));
-  const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-
-  const realTables = tables.filter(t => t.type === 'table');
-  const channels = ['table', 'table', 'takeaway', 'online'];
-  const channel = realTables.length ? channels[Math.floor(Math.random() * channels.length)] : (Math.random() < 0.5 ? 'takeaway' : 'online');
-  const tableLabel = channel === 'table' && realTables.length ? realTables[Math.floor(Math.random() * realTables.length)].label : null;
-  const phone = '06' + Math.floor(10000000 + Math.random() * 89999999);
-
-  const number = restaurant.nextOrderNumber();
-  await restaurant.save();
-  const order = await Order.create({ restaurant: req.auth.id, number, channel, tableLabel, phone, items, total, status: 'new' });
-  await Product.updateMany(
-    { _id: { $in: shuffled.map(p => p._id) } },
-    [{ $set: { sold: { $add: ['$sold', 1] } } }]
-  );
-
-  const payload = mapOrder(order.toObject());
-  emitToRestaurant(req.auth.id, 'order:new', payload);
-  res.status(201).json(payload);
 });
 
 // ---- POS (staff-taken orders) ----

@@ -3,7 +3,8 @@ const bcrypt = require('bcryptjs');
 const AdminUser = require('../models/AdminUser');
 const Restaurant = require('../models/Restaurant');
 const Staff = require('../models/Staff');
-const { signToken } = require('../middleware/auth');
+const { signToken, SUBSCRIPTION_EXPIRED_MESSAGE } = require('../middleware/auth');
+const { isSubscriptionExpired } = require('../utils/subscription');
 
 const router = express.Router();
 
@@ -24,6 +25,7 @@ router.post('/restaurant/login', async (req, res) => {
   const restaurant = await Restaurant.findOne({ username: String(username).trim().toLowerCase() });
   if (!restaurant) return res.status(401).json({ error: 'Invalid credentials' });
   if (restaurant.status === 'suspended') return res.status(403).json({ error: 'This restaurant account is suspended' });
+  if (isSubscriptionExpired(restaurant)) return res.status(402).json({ error: SUBSCRIPTION_EXPIRED_MESSAGE });
   const ok = await bcrypt.compare(password, restaurant.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const now = new Date();
@@ -45,6 +47,7 @@ router.post('/staff/login', async (req, res) => {
   if (!staff || !staff.restaurant) return res.status(401).json({ error: 'Invalid credentials' });
   if (staff.status === 'suspended') return res.status(403).json({ error: 'This staff account is suspended' });
   if (staff.restaurant.status === 'suspended') return res.status(403).json({ error: 'This restaurant account is suspended' });
+  if (isSubscriptionExpired(staff.restaurant)) return res.status(402).json({ error: SUBSCRIPTION_EXPIRED_MESSAGE });
   const ok = await bcrypt.compare(password, staff.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const now = new Date();

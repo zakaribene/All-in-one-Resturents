@@ -8,6 +8,15 @@ const RestaurantSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
   plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Free' },
   status: { type: String, enum: ['active', 'suspended'], default: 'active' },
+  orderingEnabled: { type: Boolean, default: true },
+  // Billing/subscription lifecycle. `subscriptionEndsAt` null means "not tracked yet" —
+  // treated as never-expiring so existing restaurants aren't affected until admin sets one.
+  // `graceEndsAt` is a temporary access extension past subscriptionEndsAt with its own
+  // countdown banner (message/color), independent from the real end date.
+  subscriptionEndsAt: { type: Date, default: null },
+  graceEndsAt: { type: Date, default: null },
+  graceMessage: { type: String, default: '' },
+  graceColor: { type: String, enum: ['orange', 'red', 'purple', 'blue', 'green', 'pink'], default: 'orange' },
   lastLoginAt: { type: Date, default: null },
   lastSeenAt: { type: Date, default: null },
   hue: { type: Number, default: () => Math.floor(Math.random() * 360) },

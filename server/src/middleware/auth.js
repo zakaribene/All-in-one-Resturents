@@ -1,8 +1,13 @@
 const jwt = require('jsonwebtoken');
 const Restaurant = require('../models/Restaurant');
+const { isSubscriptionExpired } = require('../utils/subscription');
 
-function signToken(payload) {
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+const SUBSCRIPTION_EXPIRED_MESSAGE =
+  'Subscription-kaagu wuu dhammaaday. Fadlan bixi lacagta si dashboard-ku u sii shaqeeyo · ' +
+  'Your subscription has expired. Please pay your subscription fee to continue.';
+
+function signToken(payload, expiresIn = '7d') {
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
 }
 
 // Lightweight "online" heartbeat. Called on every authenticated restaurant/staff
@@ -49,18 +54,26 @@ function requireRestaurant(req, res, next) {
 // `restaurant: req.auth.id` query in restaurant.js keeps working unchanged), and
 // stashes the staff's own id + permissions for the permission-check middlewares below.
 function requireRestaurantOrStaff(req, res, next) {
-  authRequired(req, res, () => {
+  authRequired(req, res, async () => {
+    let restaurantId;
     if (req.auth.role === 'restaurant') {
-      touchRestaurantLastSeen(req.auth.id);
-      return next();
-    }
-    if (req.auth.role === 'staff') {
+      restaurantId = req.auth.id;
+    } else if (req.auth.role === 'staff') {
       req.auth.staffId = req.auth.id;
       req.auth.id = req.auth.restaurantId;
-      touchRestaurantLastSeen(req.auth.id);
-      return next();
+      restaurantId = req.auth.id;
+    } else {
+      return res.status(403).json({ error: 'Restaurant only' });
     }
-    return res.status(403).json({ error: 'Restaurant only' });
+    touchRestaurantLastSeen(restaurantId);
+    // An admin "logged in as" this restaurant to help them (often BECAUSE billing
+    // is the problem) — never lock that session out over the very thing they're there to fix.
+    if (req.auth.impersonatedBy) return next();
+    // Enforced here (not just at login) so a session already open when the grace
+    // period runs out gets cut off on its very next request — no refresh needed.
+    const r = await Restaurant.findById(restaurantId).select('subscriptionEndsAt graceEndsAt').lean();
+    if (isSubscriptionExpired(r)) return res.status(402).json({ error: SUBSCRIPTION_EXPIRED_MESSAGE });
+    next();
   });
 }
 
@@ -93,4 +106,5 @@ function requireOwnerOnly(req, res, next) {
 module.exports = {
   signToken, authRequired, requireAdmin, requireRestaurant,
   requireRestaurantOrStaff, requirePermission, requireAnyPermission, requireOwnerOnly,
+  SUBSCRIPTION_EXPIRED_MESSAGE,
 };

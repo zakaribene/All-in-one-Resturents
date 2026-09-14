@@ -43,7 +43,13 @@ export function RestaurantAuthProvider({ children }) {
       setRestaurant(data.restaurant);
       return { ok: true };
     } catch (err) {
-      // Not an owner account — try it as a staff login before giving up.
+      // A 401 just means this username isn't an owner account — worth trying it as
+      // staff. A 402/403 (subscription expired, account suspended) is a definitive
+      // answer about a real account and must be shown as-is, not masked by whatever
+      // generic "no such staff" error the fallback attempt below would produce.
+      if (err?.response?.status !== 401) {
+        return { ok: false, error: apiErrorMessage(err, 'Login failed') };
+      }
       try {
         const { data } = await api.post('/auth/staff/login', { username, password });
         setAuthToken('restaurant', data.token);
@@ -62,9 +68,17 @@ export function RestaurantAuthProvider({ children }) {
     setRestaurant(null);
   }, []);
 
+  // Used by the super admin's "Login as store" action: adopts a token issued by
+  // POST /admin/restaurants/:id/login-as without going through a password login.
+  const loginWithToken = useCallback((newToken, restaurantData) => {
+    setAuthToken('restaurant', newToken);
+    setToken(newToken);
+    setRestaurant(restaurantData);
+  }, []);
+
   const value = useMemo(
-    () => ({ token, isAuthed: !!token, restaurant, setRestaurant, login, logout }),
-    [token, restaurant, login, logout]
+    () => ({ token, isAuthed: !!token, restaurant, setRestaurant, login, logout, loginWithToken }),
+    [token, restaurant, login, logout, loginWithToken]
   );
   return <RestaurantAuthContext.Provider value={value}>{children}</RestaurantAuthContext.Provider>;
 }

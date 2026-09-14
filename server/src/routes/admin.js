@@ -8,11 +8,12 @@ const Activity = require('../models/Activity');
 const AdminUser = require('../models/AdminUser');
 const PaymentAccount = require('../models/PaymentAccount');
 const SmsAccount = require('../models/SmsAccount');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, signToken } = require('../middleware/auth');
 const { makeTableCode, slugify } = require('../utils/codes');
 const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { dataSummary, purgeData } = require('../utils/restaurantData');
+const { subscriptionStatus } = require('../utils/subscription');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -97,6 +98,8 @@ router.get('/restaurants', async (req, res) => {
     const m = map.get(String(r._id)) || { orders: 0, revenue: 0 };
     return {
       id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username, plan: r.plan, status: r.status,
+      orderingEnabled: r.orderingEnabled !== false,
+      subscriptionStatus: subscriptionStatus(r),
       hue: r.hue, orders: m.orders, revenue: '$' + m.revenue.toFixed(2),
       lastLoginAt: r.lastLoginAt || null, lastSeenAt: r.lastSeenAt || null,
     };
@@ -131,7 +134,7 @@ router.get('/restaurants/:id', async (req, res) => {
   ]);
   res.json({
     id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username,
-    plan: r.plan, status: r.status, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
+    plan: r.plan, status: r.status, orderingEnabled: r.orderingEnabled !== false, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
     orders: orderCount, revenue: '$' + (revenueAgg[0]?.sum || 0).toFixed(2), createdAt: r.createdAt,
     lastLoginAt: r.lastLoginAt || null, lastSeenAt: r.lastSeenAt || null,
   });
@@ -185,6 +188,116 @@ router.patch('/restaurants/:id/toggle', async (req, res) => {
     dot: r.status === 'suspended' ? '#E5484D' : '#12A150',
   });
   res.json({ id: r._id, status: r.status });
+});
+
+router.patch('/restaurants/:id/ordering-toggle', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  r.orderingEnabled = !(r.orderingEnabled !== false);
+  await r.save();
+  await Activity.create({
+    restaurant: r._id,
+    message: `${r.name} QR/online ordering ${r.orderingEnabled ? 'enabled' : 'disabled'} by admin`,
+    dot: r.orderingEnabled ? '#12A150' : '#E5484D',
+  });
+  res.json({ id: r._id, orderingEnabled: r.orderingEnabled });
+});
+
+// Impersonation: lets the super admin view a restaurant's own dashboard without
+// its password. Short-lived (2h) and stamped with `impersonatedBy` so /restaurant/me
+// can tell the owner dashboard it's an admin session (banner + "return to admin").
+router.post('/restaurants/:id/login-as', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const token = signToken({ role: 'restaurant', id: r._id.toString(), impersonatedBy: req.auth.id }, '2h');
+  await Activity.create({ restaurant: r._id, message: `Admin logged in as ${r.name}`, dot: '#8B5CF6' });
+  res.json({
+    token,
+    restaurant: { id: r._id, name: r.name, city: r.city, plan: r.plan, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl },
+  });
+});
+
+// ---- Subscriptions (renew / grace period) ----
+const GRACE_COLORS = ['orange', 'red', 'purple', 'blue', 'green', 'pink'];
+
+// Pushes the new subscription state straight into an already-open dashboard tab (picked
+// up by RestaurantLayout's socket listener) so the banner appears/updates/disappears
+// live — the owner never has to refresh to see what the admin just did.
+function emitSubscriptionUpdate(r) {
+  emitToRestaurant(r._id, 'subscription:updated', {
+    subscriptionStatus: subscriptionStatus(r),
+    subscriptionEndsAt: r.subscriptionEndsAt || null,
+    graceEndsAt: r.graceEndsAt || null,
+    graceMessage: r.graceMessage || '',
+    graceColor: r.graceColor || 'orange',
+  });
+}
+
+router.get('/restaurants/:id/subscription', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id).lean();
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  res.json({
+    id: r._id, name: r.name, owner: r.ownerName,
+    status: subscriptionStatus(r),
+    subscriptionEndsAt: r.subscriptionEndsAt || null,
+    graceEndsAt: r.graceEndsAt || null,
+    graceMessage: r.graceMessage || '',
+    graceColor: r.graceColor || 'orange',
+  });
+});
+
+router.patch('/restaurants/:id/subscription/renew', async (req, res) => {
+  const { newEndsAt } = req.body || {};
+  const date = new Date(newEndsAt);
+  if (!newEndsAt || Number.isNaN(date.getTime())) return res.status(400).json({ error: 'A valid newEndsAt date is required' });
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  r.subscriptionEndsAt = date;
+  // Payment received — any lingering grace countdown is now moot.
+  r.graceEndsAt = null;
+  r.graceMessage = '';
+  await r.save();
+  await Activity.create({
+    restaurant: r._id,
+    message: `${r.name}: subscription renewed until ${date.toLocaleDateString()} by admin`,
+    dot: '#12A150',
+  });
+  emitSubscriptionUpdate(r);
+  res.json({ id: r._id, status: subscriptionStatus(r), subscriptionEndsAt: r.subscriptionEndsAt });
+});
+
+router.patch('/restaurants/:id/subscription/grace', async (req, res) => {
+  const { days, hours, minutes, message, color } = req.body || {};
+  const totalMs = (Math.max(0, Number(days) || 0) * 86400 + Math.max(0, Number(hours) || 0) * 3600 + Math.max(0, Number(minutes) || 0) * 60) * 1000;
+  if (totalMs <= 0) return res.status(400).json({ error: 'Enter at least some days, hours, or minutes' });
+  const cleanMessage = String(message || '').trim();
+  if (!cleanMessage) return res.status(400).json({ error: 'Banner message is required' });
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  r.graceEndsAt = new Date(Date.now() + totalMs);
+  r.graceMessage = cleanMessage;
+  if (GRACE_COLORS.includes(color)) r.graceColor = color;
+  await r.save();
+  await Activity.create({
+    restaurant: r._id,
+    message: `${r.name}: grace period granted until ${r.graceEndsAt.toLocaleString()} by admin`,
+    dot: '#F5A623',
+  });
+  emitSubscriptionUpdate(r);
+  res.json({
+    id: r._id, status: subscriptionStatus(r), graceEndsAt: r.graceEndsAt, graceMessage: r.graceMessage, graceColor: r.graceColor,
+  });
+});
+
+router.patch('/restaurants/:id/subscription/clear-grace', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  r.graceEndsAt = null;
+  r.graceMessage = '';
+  await r.save();
+  await Activity.create({ restaurant: r._id, message: `${r.name}: grace banner cleared by admin`, dot: '#8B5CF6' });
+  emitSubscriptionUpdate(r);
+  res.json({ id: r._id, status: subscriptionStatus(r) });
 });
 
 router.patch('/restaurants/:id/password', async (req, res) => {

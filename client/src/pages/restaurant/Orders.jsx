@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Bell, Search, StickyNote, Play, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet } from 'lucide-react';
+import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
@@ -198,7 +198,6 @@ export default function Orders() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [simulateError, setSimulateError] = useState('');
 
   useEffect(() => {
     api.get('/restaurant/orders').then((r) => setOrders(r.data));
@@ -242,15 +241,6 @@ export default function Orders() {
       addToast({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
     }
   }
-  async function simulate() {
-    setSimulateError('');
-    try {
-      await api.post('/restaurant/orders/simulate');
-    } catch (e) {
-      setSimulateError(e?.response?.data?.error || 'Add products first');
-    }
-  }
-
   const counts = useMemo(() => ({
     all: orders.length,
     pending: orders.filter((o) => !isPaid(o)).length,
@@ -291,10 +281,8 @@ export default function Orders() {
           <button className="btn btn-ghost btn-sm" onClick={() => setSoundOn((v) => !v)}>
             <Bell size={14} strokeWidth={2.25} /> Sound: <b style={{ marginLeft: 2 }}>{soundOn ? 'On · Furan' : 'Off · Xiran'}</b>
           </button>
-          <button className="btn btn-primary btn-sm" onClick={simulate}><Play size={13} strokeWidth={2.25} /> Test order</button>
         </div>
       </div>
-      {simulateError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{simulateError}</div>}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

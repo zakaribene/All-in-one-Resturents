@@ -1,11 +1,29 @@
 import { useEffect, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { api, apiErrorMessage } from '../../lib/api';
+import { useRestaurantAuth } from '../../lib/AuthContext';
 import Modal from '../../components/Modal';
 
-const GRID = '2fr 1.15fr .6fr .55fr .8fr 1fr 1.75fr';
+const GRID = '2fr 1.1fr .55fr .5fr .85fr 1fr .5fr';
 const PLANS = ['Free', 'Basic', 'Pro'];
 const ONLINE_MS = 90 * 1000;
+
+function MenuItem({ icon, label, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 10px',
+        borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+        fontSize: 13, fontWeight: 700, color: danger ? 'var(--danger)' : 'var(--text)',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      <span style={{ width: 18, textAlign: 'center' }}>{icon}</span> {label}
+    </button>
+  );
+}
 
 function initials(name) {
   return name.split(' ').map((w) => w[0]).slice(0, 2).join('');
@@ -28,11 +46,15 @@ function lastSeen(iso) {
 
 export default function Restaurants() {
   const { addToast, confirm } = useOutletContext();
+  const navigate = useNavigate();
+  const { loginWithToken } = useRestaurantAuth();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [managingFeatures, setManagingFeatures] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
   const [error, setError] = useState('');
   const [, forceTick] = useState(0);
 
@@ -76,6 +98,17 @@ export default function Restaurants() {
     setViewing(data);
   }
 
+  async function loginAsStore(r) {
+    setOpenMenuId(null);
+    try {
+      const { data } = await api.post(`/admin/restaurants/${r.id}/login-as`);
+      loginWithToken(data.token, data.restaurant);
+      navigate('/dashboard');
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed to log in as store', body: apiErrorMessage(err), tone: 'error' });
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 22, gap: 16, flexWrap: 'wrap' }}>
@@ -116,21 +149,44 @@ export default function Restaurants() {
                 <span className="pill" style={{ background: r.status === 'active' ? 'var(--success-bg)' : 'var(--danger-bg)', color: r.status === 'active' ? 'var(--success)' : 'var(--danger)' }}>
                   {r.status === 'active' ? 'Active' : 'Suspended'}
                 </span>
+                {r.orderingEnabled === false && (
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--danger)', marginTop: 4 }}>QR xiran · off</div>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 600, color: seen.online ? 'var(--success)' : seen.muted ? 'var(--muted-3)' : 'var(--muted-4)' }}>
                 <span style={{ width: 7, height: 7, borderRadius: 99, flex: '0 0 auto', background: seen.online ? 'var(--success)' : 'var(--muted-3)', boxShadow: seen.online ? '0 0 0 3px var(--success-bg)' : 'none' }} />
                 {seen.label}
               </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="btn-outline" onClick={() => openView(r.id)}>View</button>
-                <button className="btn-outline" onClick={() => setEditing(r)}>Edit</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
                 <button
-                  className={r.status === 'active' ? 'btn-danger-outline' : 'btn-outline'}
-                  style={r.status !== 'active' ? { color: 'var(--accent)' } : undefined}
-                  onClick={() => toggle(r)}
+                  className="btn-outline" title="Actions"
+                  style={{ width: 36, height: 32, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, lineHeight: 1 }}
+                  onClick={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
                 >
-                  {r.status === 'active' ? 'Suspend' : 'Activate'}
+                  ⋮
                 </button>
+                {openMenuId === r.id && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setOpenMenuId(null)} />
+                    <div style={{
+                      position: 'absolute', right: 0, top: '110%', zIndex: 50, background: 'var(--surface)',
+                      border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 16px 34px -12px rgba(16,26,43,.35)',
+                      minWidth: 200, padding: 6, display: 'flex', flexDirection: 'column', gap: 1, textAlign: 'left',
+                    }}>
+                      <MenuItem icon="➜" label="Login as store" onClick={() => loginAsStore(r)} />
+                      <MenuItem icon="👁" label="View details" onClick={() => { setOpenMenuId(null); openView(r.id); }} />
+                      <MenuItem icon="✏️" label="Edit" onClick={() => { setOpenMenuId(null); setEditing(r); }} />
+                      <MenuItem icon="🎛" label="Manage features" onClick={() => { setOpenMenuId(null); setManagingFeatures(r); }} />
+                      <div style={{ borderTop: '1px solid var(--border-soft)', margin: '4px 2px' }} />
+                      <MenuItem
+                        icon={r.status === 'active' ? '⛔' : '✅'}
+                        label={r.status === 'active' ? 'Deactivate' : 'Activate'}
+                        danger={r.status === 'active'}
+                        onClick={() => { setOpenMenuId(null); toggle(r); }}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -158,6 +214,12 @@ export default function Restaurants() {
         />
       )}
       {viewing && <ViewRestaurantModal restaurant={viewing} onClose={() => setViewing(null)} />}
+      {managingFeatures && (
+        <ManageFeaturesModal
+          restaurant={managingFeatures} onClose={() => setManagingFeatures(null)}
+          addToast={addToast} onChanged={() => load({ quiet: true })}
+        />
+      )}
     </div>
   );
 }
@@ -337,6 +399,7 @@ function ViewRestaurantModal({ restaurant, onClose }) {
         <div><b>Owner:</b> {r.owner || '—'}</div>
         <div><b>Username:</b> {r.username}</div>
         <div><b>Status:</b> {r.status}</div>
+        <div><b>QR/online ordering:</b> <span style={{ color: r.orderingEnabled !== false ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>{r.orderingEnabled !== false ? 'Enabled' : 'Disabled'}</span></div>
         <div><b>Joined:</b> {new Date(r.createdAt).toLocaleDateString()}</div>
         <div><b>Last login:</b> {r.lastLoginAt ? new Date(r.lastLoginAt).toLocaleString() : '—'}</div>
         <div><b>Last seen:</b> <span style={{ color: seen.online ? 'var(--success)' : 'inherit', fontWeight: seen.online ? 700 : 400 }}>{seen.label}</span></div>
@@ -368,6 +431,129 @@ function ViewRestaurantModal({ restaurant, onClose }) {
 
       <div style={{ marginTop: 18, textAlign: 'right' }}>
         <button className="btn-outline" onClick={onClose}>Close</button>
+      </div>
+    </Modal>
+  );
+}
+
+function FeatureToggle({ on, disabled, busy, onClick }) {
+  return (
+    <button
+      onClick={onClick} disabled={disabled || busy}
+      style={{
+        width: 42, height: 24, borderRadius: 99, border: 'none', flex: '0 0 auto', position: 'relative', padding: 0,
+        background: on ? 'var(--accent)' : 'var(--border-strong)', cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? .5 : 1, transition: 'background .15s',
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 3, left: on ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: '#fff',
+        transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+      }} />
+    </button>
+  );
+}
+
+function FeatureRow({ icon, title, desc, on, busy, disabled, loading, onToggle }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 2px', borderBottom: '1px solid var(--border-soft)' }}>
+      <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--panel)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flex: '0 0 auto' }}>{icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{title}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 1 }}>{desc}</div>
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>…</div>
+      ) : (
+        <FeatureToggle on={on} disabled={disabled} busy={busy} onClick={onToggle} />
+      )}
+    </div>
+  );
+}
+
+function ManageFeaturesModal({ restaurant, onClose, addToast, onChanged }) {
+  const [orderingEnabled, setOrderingEnabled] = useState(restaurant.orderingEnabled !== false);
+  const [smsAccount, setSmsAccount] = useState(undefined); // undefined = loading, null = not connected
+  const [paymentAccounts, setPaymentAccounts] = useState(undefined);
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    api.get(`/admin/restaurants/${restaurant.id}/sms-account`).then((r) => setSmsAccount(r.data)).catch(() => setSmsAccount(null));
+    api.get(`/admin/restaurants/${restaurant.id}/payment-accounts`).then((r) => setPaymentAccounts(r.data)).catch(() => setPaymentAccounts([]));
+  }, [restaurant.id]);
+
+  function fail(err) {
+    addToast?.({ title: 'Way fashilantay · Action failed', body: apiErrorMessage(err), tone: 'error' });
+  }
+
+  async function toggleOrdering() {
+    setBusy('qr');
+    try {
+      const { data } = await api.patch(`/admin/restaurants/${restaurant.id}/ordering-toggle`);
+      setOrderingEnabled(data.orderingEnabled);
+      onChanged?.();
+    } catch (err) { fail(err); } finally { setBusy(''); }
+  }
+
+  async function toggleSms() {
+    if (!smsAccount) return;
+    setBusy('sms');
+    const nextStatus = smsAccount.status === 'active' ? 'disabled' : 'active';
+    try {
+      await api.patch(`/admin/restaurants/${restaurant.id}/sms-account`, { status: nextStatus });
+      setSmsAccount((prev) => ({ ...prev, status: nextStatus }));
+      onChanged?.();
+    } catch (err) { fail(err); } finally { setBusy(''); }
+  }
+
+  async function toggleBilling() {
+    if (!paymentAccounts?.length) return;
+    setBusy('billing');
+    const nextStatus = paymentAccounts.some((a) => a.status === 'active') ? 'disabled' : 'active';
+    try {
+      await Promise.all(paymentAccounts.map((a) =>
+        api.patch(`/admin/restaurants/${restaurant.id}/payment-accounts/${a.id}`, { status: nextStatus })
+      ));
+      setPaymentAccounts((prev) => prev.map((a) => ({ ...a, status: nextStatus })));
+      onChanged?.();
+    } catch (err) { fail(err); } finally { setBusy(''); }
+  }
+
+  const loadingAccounts = smsAccount === undefined || paymentAccounts === undefined;
+  const smsConnected = !!smsAccount;
+  const smsOn = smsConnected && smsAccount.status === 'active';
+  const billingConnected = Array.isArray(paymentAccounts) && paymentAccounts.length > 0;
+  const billingOn = billingConnected && paymentAccounts.some((a) => a.status === 'active');
+  const enabledCount = [orderingEnabled, smsOn, billingOn].filter(Boolean).length;
+
+  return (
+    <Modal onClose={onClose} width={440}>
+      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>Manage features</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 14 }}>{restaurant.name} · {enabledCount}/3 enabled</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 4 }}>
+        Isbeddelka wuxuu dhaqan galayaa isla markiiba · Changes apply immediately.
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <FeatureRow
+          icon="🔗" title="QR Code · Online ordering"
+          desc="Dalabyada QR/miis/online · Customer-facing QR, table & online ordering."
+          on={orderingEnabled} busy={busy === 'qr'} onToggle={toggleOrdering}
+        />
+        <FeatureRow
+          icon="💬" title="SMS"
+          desc={smsConnected ? 'Ogeysiisyada order/receipt · Order & receipt SMS notifications.' : 'Weli lama xidhin · Not connected yet — connect it from the SMS page first.'}
+          on={smsOn} busy={busy === 'sms'} disabled={!smsConnected} loading={loadingAccounts} onToggle={toggleSms}
+        />
+        <FeatureRow
+          icon="💳" title="Billing · Payments"
+          desc={billingConnected ? 'Lacag-bixinta online (WaafiPay) · Online payment collection.' : 'Weli lama xidhin · Not connected yet — connect it from the Billing page first.'}
+          on={billingOn} busy={busy === 'billing'} disabled={!billingConnected} loading={loadingAccounts} onToggle={toggleBilling}
+        />
+      </div>
+
+      <div style={{ marginTop: 18, textAlign: 'right' }}>
+        <button className="btn btn-primary" onClick={onClose}>Done</button>
       </div>
     </Modal>
   );

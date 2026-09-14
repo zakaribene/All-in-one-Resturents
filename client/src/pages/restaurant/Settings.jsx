@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Plus, Trash2, Receipt, Heart } from 'lucide-react';
+import { Plus, Trash2, Receipt, Heart, KeyRound } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 
 export default function Settings() {
@@ -9,6 +9,27 @@ export default function Settings() {
   const [thankYouMessage, setThankYouMessage] = useState(me?.receiptThankYouMessage || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+
+  async function changePassword(e) {
+    e.preventDefault();
+    setPwError(''); setPwSuccess(''); setPwSaving(true);
+    try {
+      await api.patch('/restaurant/settings/password', { currentPassword, newPassword });
+      setCurrentPassword(''); setNewPassword('');
+      setPwSuccess('Furaha waa la beddelay · Password updated.');
+      addToast({ title: 'Furaha waa la beddelay · Password updated', tone: 'success' });
+    } catch (err) {
+      setPwError(apiErrorMessage(err, 'Failed to update password'));
+    } finally {
+      setPwSaving(false);
+    }
+  }
 
   function updateItem(i, field, value) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: value } : it)));
@@ -83,6 +104,32 @@ export default function Settings() {
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'Keydinaya…' : 'Keydi · Save'}</button>
+      </div>
+
+      <div className="card card-pad" style={{ maxWidth: 560, marginTop: 20 }}>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <KeyRound size={16} strokeWidth={2.25} /> Beddel furaha sirta · Change password
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>
+          Furahaan waxaad ku soo gashaa dashboard-kan · Used to sign in to this dashboard.
+        </div>
+
+        <form onSubmit={changePassword} style={{ maxWidth: 340 }}>
+          <label className="field-label">Furaha hadda · Current password</label>
+          <input
+            className="field-input" style={{ marginBottom: 14 }} type="password" required
+            value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+          <label className="field-label">Furaha cusub · New password</label>
+          <input
+            className="field-input" style={{ marginBottom: 14 }} type="password" required minLength={6}
+            value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Ugu yaraan 6 xaraf · At least 6 characters"
+          />
+          {pwError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{pwError}</div>}
+          {pwSuccess && <div style={{ color: 'var(--success)', fontSize: 13, marginBottom: 12 }}>{pwSuccess}</div>}
+          <button type="submit" className="btn btn-primary" disabled={pwSaving}>{pwSaving ? 'Keydinaya…' : 'Beddel · Change password'}</button>
+        </form>
       </div>
     </div>
   );

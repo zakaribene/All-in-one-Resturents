@@ -119,6 +119,7 @@ router.get('/menu/:code', async (req, res) => {
   if (!table) return res.status(404).json({ error: 'Invalid QR code' });
   const restaurant = await Restaurant.findById(table.restaurant).lean();
   if (!restaurant || restaurant.status !== 'active') return res.status(404).json({ error: 'Restaurant unavailable' });
+  if (restaurant.orderingEnabled === false) return res.status(403).json({ error: 'QR ordering is currently disabled for this restaurant' });
   const [categories, products, paymentAccounts] = await Promise.all([
     Category.find({ restaurant: restaurant._id }).sort({ order: 1 }).lean(),
     Product.find({ restaurant: restaurant._id, status: 'active' }).lean(),
@@ -214,6 +215,7 @@ router.post('/orders', async (req, res) => {
   if (!table) return res.status(404).json({ error: 'Invalid QR code' });
   const restaurant = await Restaurant.findById(table.restaurant);
   if (!restaurant || restaurant.status !== 'active') return res.status(404).json({ error: 'Restaurant unavailable' });
+  if (restaurant.orderingEnabled === false) return res.status(403).json({ error: 'QR ordering is currently disabled for this restaurant' });
 
   const productIds = items.map(i => i.productId);
   const products = await Product.find({ _id: { $in: productIds }, restaurant: restaurant._id, status: 'active' }).lean();

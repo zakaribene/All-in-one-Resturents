@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings, Database } from 'lucide-react';
+import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings, Database, CalendarClock } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -13,6 +13,7 @@ import { useToasts } from '../../lib/useToasts';
 const NAV = [
   { id: 'overview', so: 'Guudmar', en: 'Overview', icon: LayoutDashboard },
   { id: 'restaurants', so: 'Maqaayadaha', en: 'Restaurants', icon: Store },
+  { id: 'subscriptions', so: 'Rukumaadka', en: 'Subscriptions', icon: CalendarClock },
   { id: 'notifications', so: 'Fariimaha', en: 'Notifications', icon: Bell },
   { id: 'billing', so: 'Lacagta', en: 'Billing', icon: CreditCard },
   { id: 'sms', so: 'SMS', en: 'SMS', icon: MessageSquare },

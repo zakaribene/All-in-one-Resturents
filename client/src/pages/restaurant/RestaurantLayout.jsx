@@ -9,6 +9,7 @@ import ProfileMenu from '../../components/ProfileMenu';
 import NotificationBell from '../../components/NotificationBell';
 import ThemeToggle from '../../components/ThemeToggle';
 import ToastStack from '../../components/ToastStack';
+import SubscriptionBanner from '../../components/SubscriptionBanner';
 import { useConfirm } from '../../components/useConfirm';
 import { api } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
@@ -39,9 +40,11 @@ export default function RestaurantLayout() {
   const isStaff = me?.role === 'staff';
   const allPages = useMemo(() => [...NAV_PAGES, STAFF_PAGE, SETTINGS_PAGE], []);
   // Payments/SMS only appear once the super admin has connected an account for this restaurant.
+  // QR disappears entirely while the super admin has ordering switched off for this restaurant.
   const featureAllowed = (id) => {
     if (id === 'payments') return !!me?.paymentsEnabled;
     if (id === 'sms') return !!me?.smsEnabled;
+    if (id === 'qr') return me?.orderingEnabled !== false;
     return true;
   };
   const visibleNav = useMemo(() => {
@@ -53,7 +56,9 @@ export default function RestaurantLayout() {
   const homeId = isStaff ? (visibleNav[0]?.id || 'orders') : 'overview';
 
   useEffect(() => {
-    api.get('/restaurant/me').then((r) => setMe(r.data));
+    // A 402 here (subscription already expired, e.g. a direct reload after lockout) is
+    // handled by the response interceptor in lib/api.js, which redirects on its own.
+    api.get('/restaurant/me').then((r) => setMe(r.data)).catch(() => {});
   }, []);
 
   // Close the mobile drawer whenever the route changes.
@@ -89,6 +94,18 @@ export default function RestaurantLayout() {
 
   useIdleTimer(IDLE_MS, handleIdle, !!me);
 
+  function returnToAdmin() {
+    logout();
+    navigate('/admin/restaurants', { replace: true });
+  }
+
+  // Fired when the grace countdown hits zero. Re-checks with the server rather than
+  // trusting the local clock — if grace truly ran out, the response interceptor in
+  // lib/api.js catches the resulting 402 and bounces to /subscription-expired itself.
+  function recheckSubscription() {
+    api.get('/restaurant/me').then((r) => setMe(r.data)).catch(() => {});
+  }
+
   useEffect(() => {
     if (!me?.id) return;
     const socket = getSocket();
@@ -115,16 +132,47 @@ export default function RestaurantLayout() {
       pushNotification(n.title, n.body);
       ring();
     }
+    // Pushed the moment the super admin renews/grants/clears a subscription — merges
+    // straight into `me` so the grace banner appears, updates, or disappears live,
+    // with no reload, no matter what page of the dashboard is currently open.
+    function onSubscriptionUpdated(patch) {
+      setMe((prev) => (prev ? { ...prev, ...patch } : prev));
+    }
     socket.on('order:new', onNewOrder);
     socket.on('notification:new', onNotification);
+    socket.on('subscription:updated', onSubscriptionUpdated);
     return () => {
       socket.off('order:new', onNewOrder);
       socket.off('notification:new', onNotification);
+      socket.off('subscription:updated', onSubscriptionUpdated);
     };
   }, [me?.id, addToast]);
 
   return (
     <div className="app-root">
+      {me?.subscriptionStatus === 'grace' && me.graceEndsAt && (
+        <SubscriptionBanner
+          graceEndsAt={me.graceEndsAt} message={me.graceMessage} color={me.graceColor}
+          onExpire={recheckSubscription}
+        />
+      )}
+      {me?.impersonating && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '9px 16px',
+          background: 'var(--purple, #8B5CF6)', color: '#fff', fontSize: 13, fontWeight: 700, flexWrap: 'wrap',
+        }}>
+          <span>👁 Waxaad ku jirtaa dashboard-ka "{me.name}" — Super Admin view</span>
+          <button
+            onClick={returnToAdmin}
+            style={{
+              background: 'rgba(255,255,255,.2)', color: '#fff', border: '1px solid rgba(255,255,255,.4)',
+              borderRadius: 8, padding: '4px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer',
+            }}
+          >
+            ← Return to admin dashboard
+          </button>
+        </div>
+      )}
       <TopBar
         onMenu={() => setNavOpen(true)}
         right={
