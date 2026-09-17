@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'paymethods', 'transfers', 'expenses', 'reports', 'sms', 'products', 'categories', 'qr'];
+const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'paymethods', 'transfers', 'expenses', 'reports', 'sms', 'products', 'categories', 'qr', 'activity'];
 
 // Fine-grained action permissions — only meaningful alongside their parent page id above.
 const SUB_PERMISSION_IDS = ['pos_discount', 'orders_delete'];

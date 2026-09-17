@@ -12,6 +12,7 @@ import Billing from './pages/admin/Billing';
 import AdminSms from './pages/admin/Sms';
 import AdminSettings from './pages/admin/Settings';
 import AdminDataManager from './pages/admin/DataManager';
+import AdminActivityLog from './pages/admin/ActivityLog';
 
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
 import RestaurantOverview from './pages/restaurant/Overview';
@@ -28,6 +29,7 @@ import Categories from './pages/restaurant/Categories';
 import QrTab from './pages/restaurant/QrTab';
 import Staff from './pages/restaurant/Staff';
 import RestaurantSettings from './pages/restaurant/Settings';
+import RestaurantActivityLog from './pages/restaurant/ActivityLog';
 
 import CustomerOrder from './pages/customer/CustomerOrder';
 import SubscriptionExpired from './pages/SubscriptionExpired';
@@ -77,6 +79,7 @@ export default function App() {
               <Route path="subscriptions" element={<Subscriptions />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="billing" element={<Billing />} />
+              <Route path="activity-log" element={<AdminActivityLog />} />
               <Route path="sms" element={<AdminSms />} />
               <Route path="data" element={<AdminDataManager />} />
               <Route path="settings" element={<AdminSettings />} />
@@ -103,6 +106,7 @@ export default function App() {
               <Route path="products" element={<Products />} />
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />
+              <Route path="activity" element={<RestaurantActivityLog />} />
               <Route path="staff" element={<Staff />} />
               <Route path="settings" element={<RestaurantSettings />} />
             </Route>

@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, Wallet, ArrowLeftRight, Receipt, BarChart3, MessageSquare, UtensilsCrossed, FolderOpen, QrCode, Users, Settings } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, Wallet, ArrowLeftRight, Receipt, BarChart3, MessageSquare, UtensilsCrossed, FolderOpen, QrCode, Users, Settings, History } from 'lucide-react';
 
 // Pages a staff account can be granted access to. Keep ids in sync with
 // server/src/models/Staff.js PAGE_IDS and the route paths under /dashboard/*.
@@ -15,6 +15,7 @@ export const NAV_PAGES = [
   { id: 'products', so: 'Cuntooyinka', en: 'Products', icon: UtensilsCrossed },
   { id: 'categories', so: 'Qaybaha', en: 'Categories', icon: FolderOpen },
   { id: 'qr', so: 'QR Codes', en: 'QR Codes', icon: QrCode },
+  { id: 'activity', so: 'Diiwaanka Dhaqdhaqaaqa', en: 'Activity Log', icon: History },
 ];
 
 // Owner-only pages — never assignable as a staff permission.

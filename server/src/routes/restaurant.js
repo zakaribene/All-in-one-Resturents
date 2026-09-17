@@ -18,6 +18,7 @@ const Expense = require('../models/Expense');
 const SmsAccount = require('../models/SmsAccount');
 const SmsLog = require('../models/SmsLog');
 const Staff = require('../models/Staff');
+const Activity = require('../models/Activity');
 const { requireRestaurantOrStaff, requirePermission, requireAnyPermission, requireOwnerOnly } = require('../middleware/auth');
 const { subscriptionStatus } = require('../utils/subscription');
 const { makeTableCode } = require('../utils/codes');
@@ -27,6 +28,7 @@ const { decrypt } = require('../utils/crypto');
 const { sendSms } = require('../utils/hormuud');
 const tabaarak = require('../utils/tabaarak');
 const { buildXlsx, buildPdf, fmtMoney } = require('../utils/reportExport');
+const { logStoreActivity, MODULE_LABEL } = require('../utils/activityLog');
 
 const router = express.Router();
 router.use(requireRestaurantOrStaff);
@@ -65,6 +67,7 @@ router.get('/me', async (req, res) => {
     orderingEnabled: r.orderingEnabled !== false,
     impersonating: !!req.auth.impersonatedBy,
     subscriptionStatus: subscriptionStatus(r),
+    subscriptionEndsAt: r.subscriptionEndsAt || null,
     graceEndsAt: r.graceEndsAt || null,
     graceMessage: r.graceMessage || '',
     graceColor: r.graceColor || 'orange',
@@ -95,6 +98,7 @@ router.patch('/settings/receipt', requireOwnerOnly, async (req, res) => {
     { receiptPaymentNumbers: clean, receiptThankYouMessage: thankYouMessage },
     { new: true },
   ).lean();
+  logStoreActivity(req, { module: 'settings', action: 'Update', message: 'Receipt settings updated' });
   res.json({ receiptPaymentNumbers: r.receiptPaymentNumbers || [], receiptThankYouMessage: r.receiptThankYouMessage || '' });
 });
 
@@ -107,6 +111,7 @@ router.patch('/settings/password', requireOwnerOnly, async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
   r.passwordHash = await bcrypt.hash(newPassword, 10);
   await r.save();
+  logStoreActivity(req, { module: 'settings', action: 'Update', message: 'Account password changed' });
   res.json({ ok: true });
 });
 
@@ -121,6 +126,7 @@ router.post('/categories', requirePermission('categories'), async (req, res) => 
   if (!nameEn || !nameSo) return res.status(400).json({ error: 'nameEn and nameSo are required' });
   const count = await Category.countDocuments({ restaurant: req.auth.id });
   const cat = await Category.create({ restaurant: req.auth.id, nameEn, nameSo, order: count });
+  logStoreActivity(req, { module: 'categories', action: 'Create', message: `Category "${cat.nameEn}" created` });
   res.status(201).json({ id: cat._id, en: cat.nameEn, so: cat.nameSo });
 });
 
@@ -133,6 +139,7 @@ router.patch('/categories/:id', requirePermission('categories'), async (req, res
     { new: true },
   );
   if (!cat) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'categories', action: 'Update', message: `Category "${cat.nameEn}" updated` });
   res.json({ id: cat._id, en: cat.nameEn, so: cat.nameSo });
 });
 
@@ -141,6 +148,7 @@ router.delete('/categories/:id', requirePermission('categories'), async (req, re
   if (inUse > 0) return res.status(409).json({ error: 'Category has products, move or delete them first' });
   const cat = await Category.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!cat) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'categories', action: 'Delete', message: `Category "${cat.nameEn}" deleted` });
   res.json({ ok: true });
 });
 
@@ -164,6 +172,7 @@ router.post('/products', requirePermission('products'), upload.single('image'), 
   if (!cat) return res.status(400).json({ error: 'Invalid category' });
   const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
   const p = await Product.create({ restaurant: req.auth.id, category, nameEn, nameSo, price: Number(price), imageUrl });
+  logStoreActivity(req, { module: 'products', action: 'Create', message: `Product "${p.nameEn}" created` });
   res.status(201).json(mapProduct(p));
 });
 
@@ -181,6 +190,7 @@ router.patch('/products/:id/toggle', requirePermission('products'), async (req, 
   if (!p) return res.status(404).json({ error: 'Not found' });
   p.status = p.status === 'active' ? 'inactive' : 'active';
   await p.save();
+  logStoreActivity(req, { module: 'products', action: 'Update', message: `Product "${p.nameEn}" ${p.status === 'active' ? 'enabled' : 'disabled'}` });
   res.json(mapProduct(p));
 });
 
@@ -198,12 +208,14 @@ router.patch('/products/:id', requirePermission('products'), upload.single('imag
   if (price != null) p.price = Number(price);
   if (req.file) p.imageUrl = `/uploads/${req.file.filename}`;
   await p.save();
+  logStoreActivity(req, { module: 'products', action: 'Update', message: `Product "${p.nameEn}" updated` });
   res.json(mapProduct(p));
 });
 
 router.delete('/products/:id', requirePermission('products'), async (req, res) => {
   const p = await Product.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!p) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'products', action: 'Delete', message: `Product "${p.nameEn}" deleted` });
   res.json({ ok: true });
 });
 
@@ -220,6 +232,7 @@ router.post('/tables', requirePermission('qr'), async (req, res) => {
   const existing = await Table.findOne({ restaurant: req.auth.id, type: 'table', label: clean });
   if (existing) return res.json({ id: existing._id, label: existing.label, type: existing.type, code: existing.code });
   const t = await Table.create({ restaurant: req.auth.id, label: clean, type: 'table', code: makeTableCode() });
+  logStoreActivity(req, { module: 'qr', action: 'Create', message: `Table "${t.label}" created` });
   res.status(201).json({ id: t._id, label: t.label, type: t.type, code: t.code });
 });
 
@@ -243,12 +256,14 @@ function mapOrder(o) {
 router.post('/orders/:id/accept', requirePermission('orders'), async (req, res) => {
   const o = await Order.findOneAndUpdate({ _id: req.params.id, restaurant: req.auth.id }, { status: 'preparing' }, { new: true });
   if (!o) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'orders', action: 'Update', message: `Order #${o.number} accepted` });
   res.json(mapOrder(o));
 });
 
 router.post('/orders/:id/complete', requirePermission('orders'), async (req, res) => {
   const o = await Order.findOneAndUpdate({ _id: req.params.id, restaurant: req.auth.id }, { status: 'done' }, { new: true });
   if (!o) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'orders', action: 'Update', message: `Order #${o.number} completed` });
   res.json(mapOrder(o));
 });
 
@@ -275,6 +290,7 @@ router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), as
   order.payment.paidAt = new Date();
   await order.save();
 
+  logStoreActivity(req, { module: 'orders', action: 'Update', message: `Order #${order.number} marked paid (${fmtMoney(order.total)})` });
   const payload = mapOrder(order.toObject());
   emitToRestaurant(req.auth.id, 'order:updated', payload);
   res.json(payload);
@@ -312,6 +328,7 @@ router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async 
     updateOne: { filter: { _id: a.id }, update: { $inc: { sold: a.qty } } },
   })));
 
+  logStoreActivity(req, { module: 'orders', action: 'Update', message: `Items added to order #${order.number}` });
   const payload = mapOrder(order.toObject());
   emitToRestaurant(req.auth.id, 'order:updated', payload);
   res.json(payload);
@@ -323,6 +340,7 @@ router.delete('/orders/:id', requireAnyPermission(['orders', 'payments']), async
   }
   const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!o) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'orders', action: 'Delete', message: `Order #${o.number} deleted` });
   res.json({ ok: true });
 });
 
@@ -433,6 +451,7 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
       createdByName: cleanWaiterName || collector.name, createdByRole: collector.role,
     });
     await bumpSold();
+    logStoreActivity(req, { module: 'pos', action: 'Create', message: `POS order #${order.number} created (${fmtMoney(total)})` });
     const payload = mapOrder(order.toObject());
     emitToRestaurant(req.auth.id, 'order:new', payload);
     return res.status(201).json(payload);
@@ -470,6 +489,7 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
       },
     });
     await bumpSold();
+    logStoreActivity(req, { module: 'pos', action: 'Create', message: `POS order #${order.number} created (${fmtMoney(total)}, online payment)` });
   }
 
   const result = await chargeOrderPayment(order, account, { phone: cleanPhone });
@@ -494,6 +514,7 @@ router.post('/pos/orders/:id/pay-at-table', requirePermission('pos'), async (req
     const method = await PaymentMethod.findOne({ _id: manualMethodId, restaurant: req.auth.id, status: 'active' });
     if (method) await attributeManualCollection(order, method, await resolveCollector(req));
   }
+  logStoreActivity(req, { module: 'pos', action: 'Update', message: `POS order #${order.number} switched to pay-at-table` });
   const payload = mapOrder(order.toObject());
   emitToRestaurant(req.auth.id, 'order:new', payload);
   res.json(payload);
@@ -536,6 +557,7 @@ router.post('/payment-methods', requirePermission('paymethods'), async (req, res
   const existing = await PaymentMethod.findOne({ restaurant: req.auth.id, name });
   if (existing) return res.status(409).json({ error: 'A method with this name already exists · Magacan hore ayaa loo isticmaalay' });
   const m = await PaymentMethod.create({ restaurant: req.auth.id, name });
+  logStoreActivity(req, { module: 'paymethods', action: 'Create', message: `Payment method "${m.name}" created` });
   res.status(201).json(mapMethod(m, null));
 });
 
@@ -552,12 +574,14 @@ router.patch('/payment-methods/:id', requirePermission('paymethods'), async (req
   }
   if (status && ['active', 'disabled'].includes(status)) m.status = status;
   await m.save();
+  logStoreActivity(req, { module: 'paymethods', action: 'Update', message: `Payment method "${m.name}" updated` });
   res.json(mapMethod(m, null));
 });
 
 router.delete('/payment-methods/:id', requirePermission('paymethods'), async (req, res) => {
   const m = await PaymentMethod.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!m) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'paymethods', action: 'Delete', message: `Payment method "${m.name}" deleted` });
   res.json({ ok: true });
 });
 
@@ -636,6 +660,7 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
     staff: collector.id, staffName: collector.name,
   });
 
+  logStoreActivity(req, { module: 'transfers', action: 'Create', message: `Transferred ${fmtMoney(amount)} from "${from.name}" to "${to.name}"` });
   res.status(201).json({
     transfer: mapTransfer(transfer),
     balances: {
@@ -657,6 +682,7 @@ router.post('/expense-categories', requirePermission('expenses'), async (req, re
   const existing = await ExpenseCategory.findOne({ restaurant: req.auth.id, name });
   if (existing) return res.status(409).json({ error: 'A category with this name already exists · Magacan hore ayaa loo isticmaalay' });
   const c = await ExpenseCategory.create({ restaurant: req.auth.id, name });
+  logStoreActivity(req, { module: 'expenses', action: 'Create', message: `Expense category "${c.name}" created` });
   res.status(201).json({ id: c._id, name: c.name });
 });
 
@@ -665,6 +691,7 @@ router.delete('/expense-categories/:id', requirePermission('expenses'), async (r
   if (inUse > 0) return res.status(409).json({ error: 'Category is used by expenses · Qaybtan kharashaad ayaa ku xiran' });
   const c = await ExpenseCategory.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!c) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'expenses', action: 'Delete', message: `Expense category "${c.name}" deleted` });
   res.json({ ok: true });
 });
 
@@ -744,6 +771,7 @@ router.post('/expenses', requirePermission('expenses'), async (req, res) => {
     amount, note: String(note || '').trim().slice(0, 200),
     staff: collector.id, staffName: collector.name,
   });
+  logStoreActivity(req, { module: 'expenses', action: 'Create', message: `Expense recorded: ${fmtMoney(amount)} — ${cat.name} (${method.name})` });
   res.status(201).json({
     expense: mapExpense(expense),
     balance: { [String(method._id)]: Math.round((debited.balance || 0) * 100) / 100 },
@@ -762,6 +790,7 @@ router.delete('/expenses/:id', requirePermission('expenses'), async (req, res) =
     );
     if (credited) balance = { [String(e.method)]: Math.round((credited.balance || 0) * 100) / 100 };
   }
+  logStoreActivity(req, { module: 'expenses', action: 'Delete', message: `Expense deleted: ${fmtMoney(e.amount)} — ${e.categoryName}` });
   res.json({ ok: true, balance });
 });
 
@@ -1075,6 +1104,7 @@ router.post('/sms/send', requirePermission('sms'), async (req, res) => {
       results.push({ phone, ok: result.ok, error: errorText });
     }
   }
+  logStoreActivity(req, { module: 'sms', action: 'Create', message: `SMS sent to ${uniquePhones.length} recipient(s) — ${sent} sent, ${failed} failed` });
   res.json({ total: uniquePhones.length, sent, failed, results });
 });
 
@@ -1089,6 +1119,7 @@ router.get('/sms/logs', requirePermission('sms'), async (req, res) => {
 router.delete('/sms/logs/:id', requirePermission('sms'), async (req, res) => {
   const log = await SmsLog.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!log) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'sms', action: 'Delete', message: `SMS log for ${log.phone} deleted` });
   res.json({ ok: true });
 });
 
@@ -1123,6 +1154,7 @@ router.post('/staff', requireOwnerOnly, async (req, res) => {
     role: role || 'Staff', permissions: cleanPermissions,
     posPinHash: posPin ? await bcrypt.hash(String(posPin), 10) : null,
   });
+  logStoreActivity(req, { module: 'staff', action: 'Create', message: `Staff "${staff.name}" created` });
   res.status(201).json(mapStaff(staff));
 });
 
@@ -1148,6 +1180,7 @@ router.patch('/staff/:id', requireOwnerOnly, async (req, res) => {
   }
   if (posPin) staff.posPinHash = await bcrypt.hash(String(posPin), 10);
   await staff.save();
+  logStoreActivity(req, { module: 'staff', action: 'Update', message: `Staff "${staff.name}" updated` });
   res.json(mapStaff(staff));
 });
 
@@ -1156,13 +1189,77 @@ router.patch('/staff/:id/toggle', requireOwnerOnly, async (req, res) => {
   if (!staff) return res.status(404).json({ error: 'Not found' });
   staff.status = staff.status === 'active' ? 'suspended' : 'active';
   await staff.save();
+  logStoreActivity(req, { module: 'staff', action: 'Update', message: `Staff "${staff.name}" ${staff.status === 'active' ? 'reactivated' : 'suspended'}` });
   res.json(mapStaff(staff));
 });
 
 router.delete('/staff/:id', requireOwnerOnly, async (req, res) => {
   const staff = await Staff.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
   if (!staff) return res.status(404).json({ error: 'Not found' });
+  logStoreActivity(req, { module: 'staff', action: 'Delete', message: `Staff "${staff.name}" deleted` });
   res.json({ ok: true });
+});
+
+// ---- Activity Log (this store only) ----
+const STORE_ACTIVITY_COLUMNS = [
+  { header: 'Date', headerSo: 'Taariikh', key: 'date', w: 1.5, width: 18, format: 'datetime' },
+  { header: 'User', headerSo: 'Qofka', key: 'user', w: 1.2, width: 16 },
+  { header: 'Module', headerSo: 'Module', key: 'module', w: 1, width: 14 },
+  { header: 'Action', headerSo: 'Ficil', key: 'action', w: 0.9, width: 10 },
+  { header: 'Description', headerSo: 'Faahfaahin', key: 'description', w: 3, width: 44, wrap: true },
+];
+
+function activityLogFilter(req) {
+  const q = req.query || {};
+  const filter = { restaurant: req.auth.id };
+  if (q.module && q.module !== 'all') filter.module = q.module;
+  const from = String(q.from || '').slice(0, 10);
+  const to = String(q.to || '').slice(0, 10);
+  const createdAt = {};
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000Z');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999Z');
+  if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
+  return { filter, from, to };
+}
+
+async function fetchStoreActivityRows(filter, limit) {
+  const list = await Activity.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+  return list.map((a) => ({
+    date: a.createdAt, user: a.userName || '—',
+    module: MODULE_LABEL[a.module] || a.module || '—', action: a.action || '—', description: a.message,
+  }));
+}
+
+router.get('/activity-log', requirePermission('activity'), async (req, res) => {
+  const { filter } = activityLogFilter(req);
+  const rows = await fetchStoreActivityRows(filter, 500);
+  res.json({ rows, truncated: rows.length === 500, moduleOptions: Object.keys(MODULE_LABEL) });
+});
+
+router.get('/activity-log.xlsx', requirePermission('activity'), async (req, res) => {
+  const { filter, from, to } = activityLogFilter(req);
+  const rows = await fetchStoreActivityRows(filter, 5000);
+  const restaurant = await reportBrand(req.auth.id);
+  const buf = await buildXlsx({
+    restaurant, reportName: 'Activity Log', reportNameSo: 'Diiwaanka Dhaqdhaqaaqa',
+    filterLines: [`Range: ${from || '—'}  ->  ${to || '—'}`],
+    columns: STORE_ACTIVITY_COLUMNS, rows,
+  });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${reportFilename({ restaurant, reportName: 'Activity Log' }, 'xlsx')}"`);
+  res.send(Buffer.from(buf));
+});
+
+router.get('/activity-log.pdf', requirePermission('activity'), async (req, res) => {
+  const { filter, from, to } = activityLogFilter(req);
+  const rows = await fetchStoreActivityRows(filter, 5000);
+  const restaurant = await reportBrand(req.auth.id);
+  const spec = {
+    restaurant, reportName: 'Activity Log', reportNameSo: 'Diiwaanka Dhaqdhaqaaqa',
+    filterLines: [`Range: ${from || '—'}  ->  ${to || '—'}`],
+    columns: STORE_ACTIVITY_COLUMNS, rows,
+  };
+  buildPdf(spec, res, reportFilename(spec, 'pdf'));
 });
 
 module.exports = router;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings, Database, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings, Database, CalendarClock, History } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -16,6 +16,7 @@ const NAV = [
   { id: 'subscriptions', so: 'Rukumaadka', en: 'Subscriptions', icon: CalendarClock },
   { id: 'notifications', so: 'Fariimaha', en: 'Notifications', icon: Bell },
   { id: 'billing', so: 'Lacagta', en: 'Billing', icon: CreditCard },
+  { id: 'activity-log', so: 'Diiwaanka Dhaqdhaqaaqa', en: 'Activity Log', icon: History },
   { id: 'sms', so: 'SMS', en: 'SMS', icon: MessageSquare },
   { id: 'data', so: 'Xogta', en: 'Data', icon: Database },
   { id: 'settings', so: 'Dejinta', en: 'Settings', icon: Settings },

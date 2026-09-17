@@ -5,6 +5,7 @@ const Restaurant = require('../models/Restaurant');
 const Staff = require('../models/Staff');
 const { signToken, SUBSCRIPTION_EXPIRED_MESSAGE } = require('../middleware/auth');
 const { isSubscriptionExpired } = require('../utils/subscription');
+const { logActivity } = require('../utils/activityLog');
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.post('/admin/login', async (req, res) => {
   if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
   const ok = await bcrypt.compare(password, admin.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-  const token = signToken({ role: 'admin', id: admin._id.toString() });
+  const token = signToken({ role: 'admin', id: admin._id.toString(), name: admin.name });
   res.json({ token, admin: { id: admin._id, username: admin.username, name: admin.name } });
 });
 
@@ -30,7 +31,9 @@ router.post('/restaurant/login', async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const now = new Date();
   await Restaurant.updateOne({ _id: restaurant._id }, { $set: { lastLoginAt: now, lastSeenAt: now } });
-  const token = signToken({ role: 'restaurant', id: restaurant._id.toString() });
+  const ownerName = restaurant.ownerName || restaurant.name;
+  const token = signToken({ role: 'restaurant', id: restaurant._id.toString(), name: ownerName });
+  logActivity({ restaurant: restaurant._id, userName: ownerName, module: 'auth', action: 'Login', message: `${ownerName} logged in` });
   res.json({
     token,
     restaurant: {
@@ -53,8 +56,9 @@ router.post('/staff/login', async (req, res) => {
   const now = new Date();
   await Restaurant.updateOne({ _id: staff.restaurant._id }, { $set: { lastLoginAt: now, lastSeenAt: now } });
   const token = signToken({
-    role: 'staff', id: staff._id.toString(), restaurantId: staff.restaurant._id.toString(), permissions: staff.permissions,
+    role: 'staff', id: staff._id.toString(), restaurantId: staff.restaurant._id.toString(), permissions: staff.permissions, name: staff.name,
   });
+  logActivity({ restaurant: staff.restaurant._id, userName: staff.name, module: 'auth', action: 'Login', message: `${staff.name} (staff) logged in` });
   res.json({
     token,
     restaurant: {

@@ -11,6 +11,7 @@ const swaggerUi = require('swagger-ui-express');
 const { connectDB } = require('./db');
 const { initSocket } = require('./socket');
 const swaggerSpec = require('./swagger');
+const { startActivityRetentionSweep } = require('./utils/activityRetention');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
@@ -45,6 +46,7 @@ const PORT = process.env.PORT || 4000;
 connectDB()
   .then(() => {
     server.listen(PORT, () => console.log(`[server] listening on :${PORT}`));
+    startActivityRetentionSweep();
   })
   .catch((err) => {
     console.error('[db] connection failed:', err.message);

@@ -13,7 +13,15 @@ const { makeTableCode, slugify } = require('../utils/codes');
 const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { dataSummary, purgeData } = require('../utils/restaurantData');
-const { subscriptionStatus } = require('../utils/subscription');
+const { subscriptionStatus, expiringSoonList } = require('../utils/subscription');
+const { logActivity, MODULE_LABEL } = require('../utils/activityLog');
+const { getRetentionSetting, setRetentionSetting } = require('../utils/activityRetention');
+const { buildXlsx, buildPdf } = require('../utils/reportExport');
+
+// Every admin.js Activity.create() call below is on behalf of the super admin acting on
+// a restaurant, so the actor is always req.auth.name (the signed-in admin), never the
+// restaurant owner.
+function adminName(req) { return req.auth?.name || 'Super Admin'; }
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -62,17 +70,28 @@ router.get('/overview', async (req, res) => {
     { so: 'Users firfircoon', en: 'Active staff', val: String(activeRest), sub: 'across all venues', tone: '#E8A317' },
   ];
 
-  const maxCount = Math.max(1, ...restaurants.map(r => countMap.get(String(r._id)) || 0));
-  const chartRows = [...restaurants]
-    .map(r => ({ name: r.name, orders: countMap.get(String(r._id)) || 0, hue: r.hue }))
+  // Top 8 by volume — this chart answers "who's driving orders," not "list every
+  // restaurant" (the Restaurants page already does that), so a long zero-order tail
+  // doesn't belong here. One hue (accent) throughout: this is a single-measure ranking,
+  // not multiple identity-bearing series, so length is the only encoder color should carry.
+  const ranked = [...restaurants]
+    .map(r => ({ name: r.name, orders: countMap.get(String(r._id)) || 0 }))
     .sort((a, b) => b.orders - a.orders)
-    .map(r => ({ name: r.name, ordStr: r.orders.toLocaleString(), barW: ((r.orders / maxCount) * 100).toFixed(0) + '%', fg: `hsl(${r.hue} 60% 52%)` }));
+    .slice(0, 8);
+  const maxCount = Math.max(1, ...ranked.map(r => r.orders));
+  const chartRows = ranked.map(r => ({
+    name: r.name, orders: r.orders, ordStr: r.orders.toLocaleString(),
+    barW: ((r.orders / maxCount) * 100).toFixed(0) + '%',
+  }));
 
   const activity = await Activity.find().sort({ createdAt: -1 }).limit(6).lean();
+  const expiring = expiringSoonList(restaurants, 7);
 
   res.json({
     stats, chartRows,
     activity: activity.map(a => ({ t: a.message, d: timeAgo(a.createdAt), dot: a.dot })),
+    expiringSoon: expiring.slice(0, 5),
+    expiringSoonCount: expiring.length,
   });
 });
 
@@ -121,7 +140,10 @@ router.post('/restaurants', async (req, res) => {
     { restaurant: restaurant._id, label: 'Takeaway', type: 'takeaway', code: makeTableCode() },
     { restaurant: restaurant._id, label: 'Online', type: 'online', code: makeTableCode() },
   ]);
-  await Activity.create({ restaurant: restaurant._id, message: `${restaurant.name} joined · ${restaurant.plan} plan`, dot: '#12A150' });
+  logActivity({
+    restaurant: restaurant._id, userName: adminName(req), module: 'restaurant', action: 'Create',
+    message: `${restaurant.name} joined · ${restaurant.plan} plan`,
+  });
   res.status(201).json({ id: restaurant._id });
 });
 
@@ -169,10 +191,9 @@ router.patch('/restaurants/:id', async (req, res) => {
   }
 
   await r.save();
-  await Activity.create({
-    restaurant: r._id,
+  logActivity({
+    restaurant: r._id, userName: adminName(req), module: 'restaurant', action: 'Update',
     message: planChanged ? `${r.name} moved to ${r.plan} plan by admin` : `${r.name} details updated by admin`,
-    dot: '#8B5CF6',
   });
   res.json({ ok: true });
 });
@@ -182,10 +203,9 @@ router.patch('/restaurants/:id/toggle', async (req, res) => {
   if (!r) return res.status(404).json({ error: 'Not found' });
   r.status = r.status === 'active' ? 'suspended' : 'active';
   await r.save();
-  await Activity.create({
-    restaurant: r._id,
+  logActivity({
+    restaurant: r._id, userName: adminName(req), module: 'restaurant', action: 'Update',
     message: `${r.name} ${r.status === 'suspended' ? 'suspended' : 'activated'}`,
-    dot: r.status === 'suspended' ? '#E5484D' : '#12A150',
   });
   res.json({ id: r._id, status: r.status });
 });
@@ -195,10 +215,9 @@ router.patch('/restaurants/:id/ordering-toggle', async (req, res) => {
   if (!r) return res.status(404).json({ error: 'Not found' });
   r.orderingEnabled = !(r.orderingEnabled !== false);
   await r.save();
-  await Activity.create({
-    restaurant: r._id,
+  logActivity({
+    restaurant: r._id, userName: adminName(req), module: 'qr', action: 'Update',
     message: `${r.name} QR/online ordering ${r.orderingEnabled ? 'enabled' : 'disabled'} by admin`,
-    dot: r.orderingEnabled ? '#12A150' : '#E5484D',
   });
   res.json({ id: r._id, orderingEnabled: r.orderingEnabled });
 });
@@ -209,8 +228,8 @@ router.patch('/restaurants/:id/ordering-toggle', async (req, res) => {
 router.post('/restaurants/:id/login-as', async (req, res) => {
   const r = await Restaurant.findById(req.params.id);
   if (!r) return res.status(404).json({ error: 'Not found' });
-  const token = signToken({ role: 'restaurant', id: r._id.toString(), impersonatedBy: req.auth.id }, '2h');
-  await Activity.create({ restaurant: r._id, message: `Admin logged in as ${r.name}`, dot: '#8B5CF6' });
+  const token = signToken({ role: 'restaurant', id: r._id.toString(), impersonatedBy: req.auth.id, name: r.ownerName || r.name }, '2h');
+  logActivity({ restaurant: r._id, userName: adminName(req), module: 'auth', action: 'Login', message: `Admin logged in as ${r.name}` });
   res.json({
     token,
     restaurant: { id: r._id, name: r.name, city: r.city, plan: r.plan, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl },
@@ -232,6 +251,15 @@ function emitSubscriptionUpdate(r) {
     graceColor: r.graceColor || 'orange',
   });
 }
+
+// Full "Subscriptions expiring soon" list for the Subscriptions page — the compact
+// version on Overview is computed inline there from the same expiringSoonList() helper.
+router.get('/subscriptions/expiring', async (req, res) => {
+  const days = Math.min(60, Math.max(1, Number(req.query.days) || 7));
+  const restaurants = await Restaurant.find().select('name ownerName username status subscriptionEndsAt graceEndsAt').lean();
+  const rows = expiringSoonList(restaurants, days);
+  res.json({ days, rows });
+});
 
 router.get('/restaurants/:id/subscription', async (req, res) => {
   const r = await Restaurant.findById(req.params.id).lean();
@@ -257,10 +285,9 @@ router.patch('/restaurants/:id/subscription/renew', async (req, res) => {
   r.graceEndsAt = null;
   r.graceMessage = '';
   await r.save();
-  await Activity.create({
-    restaurant: r._id,
+  logActivity({
+    restaurant: r._id, userName: adminName(req), module: 'subscription', action: 'Update',
     message: `${r.name}: subscription renewed until ${date.toLocaleDateString()} by admin`,
-    dot: '#12A150',
   });
   emitSubscriptionUpdate(r);
   res.json({ id: r._id, status: subscriptionStatus(r), subscriptionEndsAt: r.subscriptionEndsAt });
@@ -274,14 +301,22 @@ router.patch('/restaurants/:id/subscription/grace', async (req, res) => {
   if (!cleanMessage) return res.status(400).json({ error: 'Banner message is required' });
   const r = await Restaurant.findById(req.params.id);
   if (!r) return res.status(404).json({ error: 'Not found' });
-  r.graceEndsAt = new Date(Date.now() + totalMs);
+  // Counts from whichever is later: "now" (subscription already expired, or none set —
+  // takes effect immediately) or the current subscriptionEndsAt (subscription still
+  // running — the same form doubles as "give N extra days once this renewal runs out",
+  // and subscriptionStatus() keeps it dormant/no-banner until that date actually arrives).
+  const subEndsAtMs = r.subscriptionEndsAt ? new Date(r.subscriptionEndsAt).getTime() : 0;
+  const base = Math.max(Date.now(), subEndsAtMs);
+  const pending = base > Date.now();
+  r.graceEndsAt = new Date(base + totalMs);
   r.graceMessage = cleanMessage;
   if (GRACE_COLORS.includes(color)) r.graceColor = color;
   await r.save();
-  await Activity.create({
-    restaurant: r._id,
-    message: `${r.name}: grace period granted until ${r.graceEndsAt.toLocaleString()} by admin`,
-    dot: '#F5A623',
+  logActivity({
+    restaurant: r._id, userName: adminName(req), module: 'subscription', action: 'Update',
+    message: pending
+      ? `${r.name}: grace period scheduled — starts when subscription ends (${r.subscriptionEndsAt.toLocaleString()}), runs until ${r.graceEndsAt.toLocaleString()} · by admin`
+      : `${r.name}: grace period granted until ${r.graceEndsAt.toLocaleString()} by admin`,
   });
   emitSubscriptionUpdate(r);
   res.json({
@@ -295,7 +330,7 @@ router.patch('/restaurants/:id/subscription/clear-grace', async (req, res) => {
   r.graceEndsAt = null;
   r.graceMessage = '';
   await r.save();
-  await Activity.create({ restaurant: r._id, message: `${r.name}: grace banner cleared by admin`, dot: '#8B5CF6' });
+  logActivity({ restaurant: r._id, userName: adminName(req), module: 'subscription', action: 'Update', message: `${r.name}: grace banner cleared by admin` });
   emitSubscriptionUpdate(r);
   res.json({ id: r._id, status: subscriptionStatus(r) });
 });
@@ -307,7 +342,7 @@ router.patch('/restaurants/:id/password', async (req, res) => {
   if (!r) return res.status(404).json({ error: 'Not found' });
   r.passwordHash = await bcrypt.hash(newPassword, 10);
   await r.save();
-  await Activity.create({ restaurant: r._id, message: `${r.name} password was reset by admin`, dot: '#E8A317' });
+  logActivity({ restaurant: r._id, userName: adminName(req), module: 'settings', action: 'Update', message: `${r.name} password was reset by admin` });
   res.json({ ok: true });
 });
 
@@ -327,10 +362,9 @@ router.post('/restaurants/:id/data/purge', async (req, res) => {
   if (!ids.length) return res.status(400).json({ error: 'No collections selected' });
   const results = await purgeData(req.params.id, ids);
   const deletedAccount = results.some((res) => res.id === 'Restaurant' && res.deletedCount > 0);
-  await Activity.create({
-    restaurant: deletedAccount ? null : r._id,
+  logActivity({
+    restaurant: deletedAccount ? null : r._id, userName: adminName(req), module: 'data', action: 'Delete',
     message: `${r.name}: admin purged ${results.map((x) => `${x.label} (${x.deletedCount})`).join(', ')}`,
-    dot: '#E5484D',
   });
   res.json({ results });
 });
@@ -382,7 +416,7 @@ router.post('/restaurants/:id/payment-accounts', async (req, res) => {
     apiUserId: encrypt(apiUserId), apiKey: encrypt(apiKey),
     currency: currency || 'USD', isPrimary: !!isPrimary,
   });
-  await Activity.create({ restaurant: restaurant._id, message: `${restaurant.name}: ${label || provider} connected`, dot: '#12A150' });
+  logActivity({ restaurant: restaurant._id, userName: adminName(req), module: 'payments', action: 'Create', message: `${restaurant.name}: ${label || provider} connected` });
   res.status(201).json({ id: account._id });
 });
 
@@ -404,12 +438,14 @@ router.patch('/restaurants/:id/payment-accounts/:accountId', async (req, res) =>
     account.isPrimary = false;
   }
   await account.save();
+  logActivity({ restaurant: req.params.id, userName: adminName(req), module: 'payments', action: 'Update', message: `${account.label || account.provider} payment account updated by admin` });
   res.json({ ok: true });
 });
 
 router.delete('/restaurants/:id/payment-accounts/:accountId', async (req, res) => {
   const account = await PaymentAccount.findOneAndDelete({ _id: req.params.accountId, restaurant: req.params.id });
   if (!account) return res.status(404).json({ error: 'Not found' });
+  logActivity({ restaurant: req.params.id, userName: adminName(req), module: 'payments', action: 'Delete', message: `${account.label || account.provider} payment account removed by admin` });
   res.json({ ok: true });
 });
 
@@ -445,7 +481,7 @@ router.post('/restaurants/:id/sms-account', async (req, res) => {
     username: encrypt(username), password: encrypt(password), senderId: senderId || '',
     apiUrl: (apiUrl && apiUrl.trim()) || SMS_API_DEFAULTS[cleanProvider],
   });
-  await Activity.create({ restaurant: restaurant._id, message: `${restaurant.name}: SMS connected`, dot: '#12A150' });
+  logActivity({ restaurant: restaurant._id, userName: adminName(req), module: 'sms', action: 'Create', message: `${restaurant.name}: SMS connected` });
   res.status(201).json({ id: account._id });
 });
 
@@ -462,13 +498,96 @@ router.patch('/restaurants/:id/sms-account', async (req, res) => {
   else if (apiUrl != null || providerChanged) account.apiUrl = SMS_API_DEFAULTS[account.provider];
   if (status && ['active', 'disabled'].includes(status)) account.status = status;
   await account.save();
+  logActivity({ restaurant: req.params.id, userName: adminName(req), module: 'sms', action: 'Update', message: 'SMS account updated by admin' });
   res.json({ ok: true });
 });
 
 router.delete('/restaurants/:id/sms-account', async (req, res) => {
   const account = await SmsAccount.findOneAndDelete({ restaurant: req.params.id });
   if (!account) return res.status(404).json({ error: 'Not found' });
+  logActivity({ restaurant: req.params.id, userName: adminName(req), module: 'sms', action: 'Delete', message: 'SMS account removed by admin' });
   res.json({ ok: true });
+});
+
+// ---- Activity Log (every store) + retention policy ----
+
+router.get('/settings/activity-retention', async (req, res) => {
+  const s = await getRetentionSetting();
+  res.json({ enabled: s.activityRetentionEnabled, days: s.activityRetentionDays });
+});
+
+router.patch('/settings/activity-retention', async (req, res) => {
+  const { enabled, days } = req.body || {};
+  if (days !== undefined && !(Number(days) > 0)) return res.status(400).json({ error: 'days must be a positive number' });
+  const s = await setRetentionSetting({ enabled, days });
+  res.json({ enabled: s.activityRetentionEnabled, days: s.activityRetentionDays });
+});
+
+const ACTIVITY_COLUMNS = [
+  { header: 'Date', headerSo: 'Taariikh', key: 'date', w: 1.5, width: 18, format: 'datetime' },
+  { header: 'Store', headerSo: 'Maqaayad', key: 'store', w: 1.3, width: 18 },
+  { header: 'User', headerSo: 'Qofka', key: 'user', w: 1.2, width: 16 },
+  { header: 'Module', headerSo: 'Module', key: 'module', w: 1, width: 14 },
+  { header: 'Action', headerSo: 'Ficil', key: 'action', w: 0.9, width: 10 },
+  { header: 'Description', headerSo: 'Faahfaahin', key: 'description', w: 3, width: 44, wrap: true },
+];
+
+// Shared by the JSON list and both export formats so filters never drift out of sync.
+async function buildActivityLogQuery(req) {
+  const q = req.query || {};
+  const filter = {};
+  if (q.restaurantId && q.restaurantId !== 'all') filter.restaurant = q.restaurantId;
+  if (q.module && q.module !== 'all') filter.module = q.module;
+  const from = String(q.from || '').slice(0, 10);
+  const to = String(q.to || '').slice(0, 10);
+  const createdAt = {};
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000Z');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999Z');
+  if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
+  return { filter, from, to };
+}
+
+async function fetchActivityRows(filter, limit) {
+  const list = await Activity.find(filter).sort({ createdAt: -1 }).limit(limit).populate('restaurant', 'name').lean();
+  return list.map((a) => ({
+    date: a.createdAt,
+    store: a.restaurant?.name || '—',
+    user: a.userName || '—',
+    module: MODULE_LABEL[a.module] || a.module || '—',
+    action: a.action || '—',
+    description: a.message,
+  }));
+}
+
+router.get('/activity-log', async (req, res) => {
+  const { filter } = await buildActivityLogQuery(req);
+  const rows = await fetchActivityRows(filter, 500);
+  res.json({ rows, truncated: rows.length === 500, moduleOptions: Object.keys(MODULE_LABEL) });
+});
+
+router.get('/activity-log.xlsx', async (req, res) => {
+  const { filter, from, to } = await buildActivityLogQuery(req);
+  const rows = await fetchActivityRows(filter, 5000);
+  const buf = await buildXlsx({
+    restaurant: { name: 'Miis Platform', hue: 212 },
+    reportName: 'Activity Log', reportNameSo: 'Diiwaanka Dhaqdhaqaaqa',
+    filterLines: [`Range: ${from || '—'}  ->  ${to || '—'}`],
+    columns: ACTIVITY_COLUMNS, rows,
+  });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="activity-log_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.send(Buffer.from(buf));
+});
+
+router.get('/activity-log.pdf', async (req, res) => {
+  const { filter, from, to } = await buildActivityLogQuery(req);
+  const rows = await fetchActivityRows(filter, 5000);
+  buildPdf({
+    restaurant: { name: 'Miis Platform', hue: 212 },
+    reportName: 'Activity Log', reportNameSo: 'Diiwaanka Dhaqdhaqaaqa',
+    filterLines: [`Range: ${from || '—'}  ->  ${to || '—'}`],
+    columns: ACTIVITY_COLUMNS, rows,
+  }, res, `activity-log_${new Date().toISOString().slice(0, 10)}.pdf`);
 });
 
 module.exports = router;

@@ -106,6 +106,32 @@ export default function RestaurantLayout() {
     api.get('/restaurant/me').then((r) => setMe(r.data)).catch(() => {});
   }
 
+  // A grace period the admin scheduled ahead of time (bundled with a renewal) stays
+  // dormant server-side until subscriptionEndsAt itself passes — see subscriptionStatus()
+  // in server/src/utils/subscription.js. Nothing else pushes an update at that exact
+  // moment (the admin isn't touching anything), so without this timer an already-open tab
+  // would only notice on its next unrelated API call. Mirrors SubscriptionBanner's own
+  // countdown-to-recheck pattern, just aimed at subscriptionEndsAt instead of graceEndsAt.
+  // Re-schedules itself in <=20h hops rather than one setTimeout(msLeft) — a subscription
+  // that's weeks or months out would otherwise overflow setTimeout's ~24.8-day signed
+  // 32-bit ceiling and fire (recheck) immediately instead of when it's actually due.
+  useEffect(() => {
+    if (me?.subscriptionStatus !== 'active' || !me?.subscriptionEndsAt) return;
+    const target = new Date(me.subscriptionEndsAt).getTime();
+    const MAX_DELAY_MS = 20 * 60 * 60 * 1000;
+    let timer;
+    function schedule() {
+      const msLeft = target - Date.now();
+      if (msLeft <= 0) { recheckSubscription(); return; }
+      timer = setTimeout(() => {
+        if (Date.now() >= target) recheckSubscription();
+        else schedule();
+      }, Math.min(msLeft + 500, MAX_DELAY_MS));
+    }
+    schedule();
+    return () => clearTimeout(timer);
+  }, [me?.subscriptionStatus, me?.subscriptionEndsAt]);
+
   useEffect(() => {
     if (!me?.id) return;
     const socket = getSocket();
