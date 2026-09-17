@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings, Database, CalendarClock, History } from 'lucide-react';
+import { LayoutDashboard, Store, Bell, CreditCard, MessageSquare, Settings, Database, CalendarClock, History, Headset } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/TopBar';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -8,6 +8,7 @@ import AdminProfileMenu from '../../components/AdminProfileMenu';
 import ToastStack from '../../components/ToastStack';
 import { useConfirm } from '../../components/useConfirm';
 import { api } from '../../lib/api';
+import { getSocket } from '../../lib/socket';
 import { useToasts } from '../../lib/useToasts';
 
 const NAV = [
@@ -17,6 +18,7 @@ const NAV = [
   { id: 'notifications', so: 'Fariimaha', en: 'Notifications', icon: Bell },
   { id: 'billing', so: 'Lacagta', en: 'Billing', icon: CreditCard },
   { id: 'activity-log', so: 'Diiwaanka Dhaqdhaqaaqa', en: 'Activity Log', icon: History },
+  { id: 'support-inbox', so: 'Sanduuqa Taageerada', en: 'Support Inbox', icon: Headset },
   { id: 'sms', so: 'SMS', en: 'SMS', icon: MessageSquare },
   { id: 'data', so: 'Xogta', en: 'Data', icon: Database },
   { id: 'settings', so: 'Dejinta', en: 'Settings', icon: Settings },
@@ -31,9 +33,36 @@ export default function AdminLayout() {
   const { toasts, addToast, dismissToast } = useToasts();
   const { confirm, confirmNode } = useConfirm();
   const active = NAV.find((n) => location.pathname.includes(n.id))?.id || 'overview';
+  const onInboxRef = useRef(false);
+  onInboxRef.current = active === 'support-inbox';
+
+  const [supportUnread, setSupportUnread] = useState(0);
+  const navItems = useMemo(
+    () => NAV.map((n) => (n.id === 'support-inbox' && supportUnread > 0 ? { ...n, badge: supportUnread } : n)),
+    [supportUnread]
+  );
 
   useEffect(() => {
     api.get('/admin/me').then((r) => setMe(r.data));
+  }, []);
+
+  useEffect(() => {
+    api.get('/admin/support/conversations')
+      .then((r) => setSupportUnread(r.data.reduce((sum, c) => sum + (c.unreadCount || 0), 0)))
+      .catch(() => {});
+  }, []);
+
+  // Live badge: a store's message bumps the count unless the inbox is already open
+  // (SupportInbox.jsx marks it read there and keeps its own count in sync).
+  useEffect(() => {
+    const socket = getSocket();
+    socket.emit('join:admin');
+    function onSupportMessage({ message }) {
+      if (message.sender !== 'restaurant' || onInboxRef.current) return;
+      setSupportUnread((n) => n + 1);
+    }
+    socket.on('support:message', onSupportMessage);
+    return () => socket.off('support:message', onSupportMessage);
   }, []);
 
   // Close the mobile drawer whenever the route changes.
@@ -64,7 +93,7 @@ export default function AdminLayout() {
       <div className="app-shell">
         <Sidebar
           eyebrow="Admin Console"
-          navItems={NAV}
+          navItems={navItems}
           activeId={active}
           open={navOpen}
           onClose={() => setNavOpen(false)}
@@ -82,7 +111,7 @@ export default function AdminLayout() {
           }
         />
         <main className="main-area">
-          <Outlet context={{ addToast, confirm }} />
+          <Outlet context={{ addToast, confirm, supportUnread, setSupportUnread }} />
         </main>
       </div>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

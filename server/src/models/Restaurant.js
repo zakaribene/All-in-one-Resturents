@@ -9,6 +9,10 @@ const RestaurantSchema = new mongoose.Schema({
   plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Free' },
   status: { type: String, enum: ['active', 'suspended'], default: 'active' },
   orderingEnabled: { type: Boolean, default: true },
+  // Super-admin-gated feature (like ordering/SMS/billing) — off by default; a store
+  // only sees the Support page, and only staff granted the 'support' permission can
+  // use it, once the admin flips this on for them.
+  supportEnabled: { type: Boolean, default: false },
   // Billing/subscription lifecycle. `subscriptionEndsAt` null means "not tracked yet" —
   // treated as never-expiring so existing restaurants aren't affected until admin sets one.
   // `graceEndsAt` is a temporary access extension past subscriptionEndsAt with its own

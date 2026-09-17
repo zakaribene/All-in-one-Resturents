@@ -45,6 +45,15 @@ export default function Sidebar({ header, eyebrow, navItems, activeId, onSelect,
                 <span>{n.en}</span>
                 <small>{n.so}</small>
               </span>
+              {n.badge > 0 && (
+                <span style={{
+                  marginLeft: 'auto', minWidth: 18, height: 18, padding: '0 5px', borderRadius: 99,
+                  background: 'var(--danger)', color: '#fff', fontSize: 10, fontWeight: 800,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
+                }}>
+                  {n.badge > 99 ? '99+' : n.badge}
+                </span>
+              )}
             </button>
           );
         })}

@@ -21,6 +21,7 @@ const MODULE_LABEL = {
   subscription: 'Subscription',
   restaurant: 'Restaurant',
   data: 'Data',
+  support: 'Support',
 };
 
 const ACTION_DOT = {

@@ -1,8 +1,5 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const Restaurant = require('../models/Restaurant');
 const Category = require('../models/Category');
@@ -19,27 +16,21 @@ const SmsAccount = require('../models/SmsAccount');
 const SmsLog = require('../models/SmsLog');
 const Staff = require('../models/Staff');
 const Activity = require('../models/Activity');
+const SupportMessage = require('../models/SupportMessage');
 const { requireRestaurantOrStaff, requirePermission, requireAnyPermission, requireOwnerOnly } = require('../middleware/auth');
 const { subscriptionStatus } = require('../utils/subscription');
 const { makeTableCode } = require('../utils/codes');
-const { emitToRestaurant } = require('../socket');
+const { emitToRestaurant, emitToAdmin } = require('../socket');
 const { chargeOrderPayment } = require('../utils/chargeOrder');
 const { decrypt } = require('../utils/crypto');
 const { sendSms } = require('../utils/hormuud');
 const tabaarak = require('../utils/tabaarak');
 const { buildXlsx, buildPdf, fmtMoney } = require('../utils/reportExport');
 const { logStoreActivity, MODULE_LABEL } = require('../utils/activityLog');
+const { upload } = require('../utils/upload');
 
 const router = express.Router();
 router.use(requireRestaurantOrStaff);
-
-const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
-fs.mkdirSync(uploadsDir, { recursive: true });
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, `${req.auth.id}-${Date.now()}${path.extname(file.originalname)}`),
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 router.get('/me', async (req, res) => {
   const r = await Restaurant.findById(req.auth.id).lean();
@@ -52,9 +43,10 @@ router.get('/me', async (req, res) => {
     hasPosPin = !!staff?.posPinHash;
   }
   const posPinRequired = req.auth.role === 'staff' && Array.isArray(req.auth.permissions) && req.auth.permissions.includes('pos');
-  const [hasPaymentAccount, hasSmsAccount] = await Promise.all([
+  const [hasPaymentAccount, hasSmsAccount, supportUnreadCount] = await Promise.all([
     PaymentAccount.exists({ restaurant: req.auth.id, status: 'active' }),
     SmsAccount.exists({ restaurant: req.auth.id, status: 'active' }),
+    r.supportEnabled ? SupportMessage.countDocuments({ restaurant: req.auth.id, sender: 'admin', readByRestaurant: false }) : 0,
   ]);
   res.json({
     id: r._id, name: r.name, city: r.city, ownerName: r.ownerName, plan: r.plan,
@@ -62,8 +54,9 @@ router.get('/me', async (req, res) => {
     role: req.auth.role, permissions: req.auth.role === 'staff' ? req.auth.permissions : null, staffName,
     posPinRequired, hasPosPin,
     receiptPaymentNumbers: r.receiptPaymentNumbers || [], receiptThankYouMessage: r.receiptThankYouMessage || '',
-    // Payments/SMS only show up once the super admin has connected an account for this restaurant.
+    // Payments/SMS/Support only show up once the super admin has connected/enabled them for this restaurant.
     paymentsEnabled: !!hasPaymentAccount, smsEnabled: !!hasSmsAccount,
+    supportEnabled: !!r.supportEnabled, supportUnreadCount,
     orderingEnabled: r.orderingEnabled !== false,
     impersonating: !!req.auth.impersonatedBy,
     subscriptionStatus: subscriptionStatus(r),
@@ -334,12 +327,72 @@ router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async 
   res.json(payload);
 });
 
+// Lets a waiter reduce/remove items on a still-pending (unpaid) POS order — e.g. the
+// customer decides they don't want one of the things they ordered after all. Takes the
+// full replacement item list (the client already has it in hand) rather than a delta,
+// so removing/reducing a line is just "send the list back without it" — same shape the
+// client already renders. Once paid, an order is a financial record and this (like
+// delete, below) refuses to touch it.
+router.patch('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be edited here' });
+  if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Order already paid — it can no longer be edited' });
+
+  const cleanItems = items
+    .map((it) => ({
+      name: String(it?.name || '').trim(),
+      qty: Math.max(0, Math.floor(Number(it?.qty) || 0)),
+      price: Math.max(0, Number(it?.price) || 0),
+    }))
+    .filter((it) => it.name && it.qty > 0);
+  if (!cleanItems.length) {
+    return res.status(400).json({ error: 'An order must have at least one item — delete the order instead if none should remain' });
+  }
+
+  order.items = cleanItems;
+  const subtotal = cleanItems.reduce((a, it) => a + it.price * it.qty, 0);
+  order.total = Math.round((subtotal - (order.discount || 0)) * 100) / 100;
+  await order.save();
+
+  logStoreActivity(req, { module: 'orders', action: 'Update', message: `Order #${order.number} items edited` });
+  const payload = mapOrder(order.toObject());
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json(payload);
+});
+
 router.delete('/orders/:id', requireAnyPermission(['orders', 'payments']), async (req, res) => {
   if (req.auth.role === 'staff' && !req.auth.permissions?.includes('orders_delete')) {
     return res.status(403).json({ error: 'You do not have permission to delete orders · Fasax kuma lihid' });
   }
-  const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id });
-  if (!o) return res.status(404).json({ error: 'Not found' });
+  // A paid order is a financial record from here on — protect it from deletion the same
+  // way the edit endpoint above protects it from being changed, regardless of permission.
+  // The exclusion lives in the delete filter itself (atomic: no separate check-then-delete
+  // race where the order could get marked paid in between) — a null result then means
+  // either "not found" or "found but paid," disambiguated by a quick lookup only in that case.
+  const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id, 'payment.status': { $ne: 'paid' } });
+  if (!o) {
+    const stillThere = await Order.exists({ _id: req.params.id, restaurant: req.auth.id });
+    if (stillThere) return res.status(400).json({ error: 'A paid order cannot be deleted · Dalab la bixiyay lama tirtiri karo' });
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  // Deleting an order must undo its financial footprint everywhere, not just remove it
+  // from the Orders list — otherwise a wallet this order was ever attributed to (manual
+  // pay-at-table selection, or a later "mark paid") keeps carrying its money forever as
+  // a phantom balance and phantom "today" total, with no order left to trace it back to.
+  const collections = await PaymentCollection.find({ restaurant: req.auth.id, order: o._id }).lean();
+  if (collections.length) {
+    const byMethod = new Map();
+    for (const c of collections) byMethod.set(String(c.method), (byMethod.get(String(c.method)) || 0) + c.amount);
+    await Promise.all([...byMethod.entries()].map(([methodId, amount]) =>
+      PaymentMethod.updateOne({ _id: methodId, restaurant: req.auth.id }, { $inc: { balance: -amount } })
+    ));
+    await PaymentCollection.deleteMany({ restaurant: req.auth.id, order: o._id });
+  }
+
   logStoreActivity(req, { module: 'orders', action: 'Delete', message: `Order #${o.number} deleted` });
   res.json({ ok: true });
 });
@@ -534,8 +587,17 @@ router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']),
   const methods = await PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean();
   const start = new Date();
   start.setHours(0, 0, 0, 0);
+  // "Today" is keyed off the order's actual payment.paidAt (not the collection ledger
+  // row's own createdAt, and not the order's createdAt) — the single date field every
+  // "today" figure in the app now agrees on. The $lookup also self-heals a collection
+  // row whose order no longer exists (e.g. one left over from before order deletion
+  // reversed these rows): with no matching order, payment.paidAt can't fall in range,
+  // so it silently drops out instead of inflating the total.
   const rows = await PaymentCollection.aggregate([
-    { $match: { restaurant: new mongoose.Types.ObjectId(req.auth.id), createdAt: { $gte: start } } },
+    { $match: { restaurant: new mongoose.Types.ObjectId(req.auth.id) } },
+    { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'order' } },
+    { $unwind: '$order' },
+    { $match: { 'order.payment.paidAt': { $gte: start } } },
     { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
   ]);
   const byId = new Map(rows.map(r => [String(r._id), r]));
@@ -833,7 +895,14 @@ async function buildSalesSpec(req) {
   const q = req.query || {};
   const { from, to, range } = reportRange(q);
   const filter = { restaurant: req.auth.id };
-  if (range) filter.createdAt = range;
+  // Filtering to Paid dates by payment.paidAt (when the money actually landed) rather
+  // than createdAt (when the order was placed) — the same field Revenue-today and the
+  // wallet "Today" total now use — so a Paid + today filter here always agrees with
+  // them. Pending/All orders have no paidAt yet, so they stay dated by createdAt.
+  if (range) {
+    if (q.status === 'paid') filter['payment.paidAt'] = range;
+    else filter.createdAt = range;
+  }
   if (q.orderId && /^\d+$/.test(String(q.orderId).trim())) filter.number = Number(String(q.orderId).trim());
   if (q.channel && q.channel !== 'all') filter.channel = q.channel;
   if (q.status === 'paid') filter['payment.status'] = 'paid';
@@ -1198,6 +1267,35 @@ router.delete('/staff/:id', requireOwnerOnly, async (req, res) => {
   if (!staff) return res.status(404).json({ error: 'Not found' });
   logStoreActivity(req, { module: 'staff', action: 'Delete', message: `Staff "${staff.name}" deleted` });
   res.json({ ok: true });
+});
+
+// ---- Support (chat with platform support) ----
+function mapSupportMessage(m) {
+  return { id: m._id, sender: m.sender, senderName: m.senderName, text: m.text, imageUrl: m.imageUrl, createdAt: m.createdAt };
+}
+
+router.get('/support/messages', requirePermission('support'), async (req, res) => {
+  const r = await Restaurant.findById(req.auth.id).select('supportEnabled').lean();
+  if (!r?.supportEnabled) return res.status(403).json({ error: 'Support is not enabled for this store · Fadlan la xiriir maamulka' });
+  const messages = await SupportMessage.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).limit(500).lean();
+  // Opening the page marks every admin message read — same "read on view" model as the rest of the app.
+  await SupportMessage.updateMany({ restaurant: req.auth.id, sender: 'admin', readByRestaurant: false }, { readByRestaurant: true });
+  res.json(messages.map(mapSupportMessage));
+});
+
+router.post('/support/messages', requirePermission('support'), upload.single('image'), async (req, res) => {
+  const r = await Restaurant.findById(req.auth.id).select('supportEnabled ownerName name').lean();
+  if (!r?.supportEnabled) return res.status(403).json({ error: 'Support is not enabled for this store · Fadlan la xiriir maamulka' });
+  const text = String(req.body?.text || '').trim().slice(0, 2000);
+  const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
+  if (!text && !imageUrl) return res.status(400).json({ error: 'Message is empty' });
+  const senderName = req.auth.name || r.ownerName || r.name || 'Owner';
+  const msg = await SupportMessage.create({ restaurant: req.auth.id, sender: 'restaurant', senderName, text, imageUrl });
+  const payload = mapSupportMessage(msg);
+  // Live to any other open tab of the same store, and to the admin inbox (list + open thread).
+  emitToRestaurant(req.auth.id, 'support:message', { restaurantId: String(req.auth.id), message: payload });
+  emitToAdmin('support:message', { restaurantId: String(req.auth.id), restaurantName: r.name, message: payload });
+  res.status(201).json(payload);
 });
 
 // ---- Activity Log (this store only) ----

@@ -3,10 +3,16 @@ const PlatformSetting = require('../models/PlatformSetting');
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // check hourly — cheap no-op when disabled
 
+// Per-field fallback, not just "doc missing entirely" — see the matching comment in
+// supportRetention.js. Not currently exercised (these were the first two fields on the
+// singleton), but the same singleton now grows fields across features, so any future
+// addition gets this safety for free by following the same pattern.
 async function getRetentionSetting() {
-  let doc = await PlatformSetting.findOne({ key: 'global' }).lean();
-  if (!doc) doc = { activityRetentionEnabled: false, activityRetentionDays: 30 };
-  return doc;
+  const doc = await PlatformSetting.findOne({ key: 'global' }).lean();
+  return {
+    activityRetentionEnabled: doc?.activityRetentionEnabled ?? false,
+    activityRetentionDays: doc?.activityRetentionDays ?? 30,
+  };
 }
 
 async function setRetentionSetting({ enabled, days }) {

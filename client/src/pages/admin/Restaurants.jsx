@@ -400,6 +400,7 @@ function ViewRestaurantModal({ restaurant, onClose }) {
         <div><b>Username:</b> {r.username}</div>
         <div><b>Status:</b> {r.status}</div>
         <div><b>QR/online ordering:</b> <span style={{ color: r.orderingEnabled !== false ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>{r.orderingEnabled !== false ? 'Enabled' : 'Disabled'}</span></div>
+        <div><b>Support Inbox:</b> <span style={{ color: r.supportEnabled ? 'var(--success)' : 'var(--muted-3)', fontWeight: 700 }}>{r.supportEnabled ? 'Enabled' : 'Disabled'}</span></div>
         <div><b>Joined:</b> {new Date(r.createdAt).toLocaleDateString()}</div>
         <div><b>Last login:</b> {r.lastLoginAt ? new Date(r.lastLoginAt).toLocaleString() : '—'}</div>
         <div><b>Last seen:</b> <span style={{ color: seen.online ? 'var(--success)' : 'inherit', fontWeight: seen.online ? 700 : 400 }}>{seen.label}</span></div>
@@ -473,6 +474,7 @@ function FeatureRow({ icon, title, desc, on, busy, disabled, loading, onToggle }
 
 function ManageFeaturesModal({ restaurant, onClose, addToast, onChanged }) {
   const [orderingEnabled, setOrderingEnabled] = useState(restaurant.orderingEnabled !== false);
+  const [supportEnabled, setSupportEnabled] = useState(!!restaurant.supportEnabled);
   const [smsAccount, setSmsAccount] = useState(undefined); // undefined = loading, null = not connected
   const [paymentAccounts, setPaymentAccounts] = useState(undefined);
   const [busy, setBusy] = useState('');
@@ -491,6 +493,15 @@ function ManageFeaturesModal({ restaurant, onClose, addToast, onChanged }) {
     try {
       const { data } = await api.patch(`/admin/restaurants/${restaurant.id}/ordering-toggle`);
       setOrderingEnabled(data.orderingEnabled);
+      onChanged?.();
+    } catch (err) { fail(err); } finally { setBusy(''); }
+  }
+
+  async function toggleSupport() {
+    setBusy('support');
+    try {
+      const { data } = await api.patch(`/admin/restaurants/${restaurant.id}/support-toggle`);
+      setSupportEnabled(data.supportEnabled);
       onChanged?.();
     } catch (err) { fail(err); } finally { setBusy(''); }
   }
@@ -524,12 +535,12 @@ function ManageFeaturesModal({ restaurant, onClose, addToast, onChanged }) {
   const smsOn = smsConnected && smsAccount.status === 'active';
   const billingConnected = Array.isArray(paymentAccounts) && paymentAccounts.length > 0;
   const billingOn = billingConnected && paymentAccounts.some((a) => a.status === 'active');
-  const enabledCount = [orderingEnabled, smsOn, billingOn].filter(Boolean).length;
+  const enabledCount = [orderingEnabled, smsOn, billingOn, supportEnabled].filter(Boolean).length;
 
   return (
     <Modal onClose={onClose} width={440}>
       <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>Manage features</div>
-      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 14 }}>{restaurant.name} · {enabledCount}/3 enabled</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 14 }}>{restaurant.name} · {enabledCount}/4 enabled</div>
       <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 4 }}>
         Isbeddelka wuxuu dhaqan galayaa isla markiiba · Changes apply immediately.
       </div>
@@ -539,6 +550,11 @@ function ManageFeaturesModal({ restaurant, onClose, addToast, onChanged }) {
           icon="🔗" title="QR Code · Online ordering"
           desc="Dalabyada QR/miis/online · Customer-facing QR, table & online ordering."
           on={orderingEnabled} busy={busy === 'qr'} onToggle={toggleOrdering}
+        />
+        <FeatureRow
+          icon="🎧" title="Support Inbox"
+          desc="Wada-sheekaysi toos ah oo lala yeesho taageerada · Live chat with platform support."
+          on={supportEnabled} busy={busy === 'support'} onToggle={toggleSupport}
         />
         <FeatureRow
           icon="💬" title="SMS"

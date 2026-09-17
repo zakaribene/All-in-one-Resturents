@@ -45,13 +45,16 @@ export default function Overview() {
 
   const totalWalletBalance = methods.reduce((a, m) => a + (m.balance || 0), 0);
 
-  const isToday = (d) => new Date(d).toDateString() === new Date().toDateString();
+  const isToday = (d) => !!d && new Date(d).toDateString() === new Date().toDateString();
   const isPaid = (o) => o.payment?.status === 'paid';
+  // "Orders today" (order volume) is about when orders were placed — createdAt.
   const todayOrders = orders.filter((o) => isToday(o.createdAt));
-  // Revenue only counts money actually collected — an order that is still
-  // pending / unpaid is not revenue yet.
-  const todayRevenue = todayOrders.filter(isPaid).reduce((a, o) => a + o.total, 0);
-  const todayPending = todayOrders.filter((o) => !isPaid(o)).reduce((a, o) => a + o.total, 0);
+  // Revenue is about money actually collected, dated by when it was actually paid
+  // (payment.paidAt) — not when the order was first placed. Same field the wallet
+  // "Today" total and the Paid-filtered Sales Report use, so all three always agree.
+  const todayRevenue = orders.filter((o) => isPaid(o) && isToday(o.payment?.paidAt)).reduce((a, o) => a + o.total, 0);
+  // A pending order has no paidAt yet, so "today" for it can only mean "placed today".
+  const todayPending = orders.filter((o) => !isPaid(o) && isToday(o.createdAt)).reduce((a, o) => a + o.total, 0);
   const activeProducts = products.filter((p) => p.status === 'active').length;
 
   const counts = {

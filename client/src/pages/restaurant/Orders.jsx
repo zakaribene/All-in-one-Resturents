@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet } from 'lucide-react';
+import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet, Pencil } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
@@ -137,6 +137,78 @@ function AddItemsModal({ order, onClose, onAdded, addToast }) {
   );
 }
 
+// Edits (reduces or removes) the CURRENT items on a still-pending order — the
+// counterpart to AddItemsModal above, which only ever adds. Getting a line to 0 drops
+// it from the list; the order must end up with at least one item (use Delete on the
+// whole order for "the customer doesn't want any of it" — the backend enforces this too).
+function EditItemsModal({ order, onClose, onUpdated, addToast }) {
+  const [items, setItems] = useState(() => order.items.map((it) => ({ ...it })));
+  const [busy, setBusy] = useState(false);
+
+  function setQty(i, qty) {
+    setItems((prev) => {
+      const next = [...prev];
+      if (qty <= 0) { next.splice(i, 1); return next; }
+      next[i] = { ...next[i], qty };
+      return next;
+    });
+  }
+
+  const total = items.reduce((a, it) => a + it.price * it.qty, 0) - (order.discount || 0);
+  const changed = items.length !== order.items.length || items.some((it, i) => it.qty !== order.items[i]?.qty);
+
+  async function submit() {
+    if (!items.length || busy || !changed) return;
+    setBusy(true);
+    try {
+      const { data } = await api.patch(`/restaurant/orders/${order.id}/items`, {
+        items: items.map(({ name, qty, price }) => ({ name, qty, price })),
+      });
+      onUpdated(data);
+      addToast({ title: 'Dalabka waa la beddelay · Order updated', body: `#${data.number}`, tone: 'success' });
+      onClose();
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed to update', body: apiErrorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={440}>
+      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Wax ka beddel dalabka · Edit order</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 14 }}>Order #{order.number}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 14 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid var(--border-soft)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>{it.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>${it.price.toFixed(2)} · ${(it.price * it.qty).toFixed(2)}</div>
+            </div>
+            <button onClick={() => setQty(i, it.qty - 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={12} /></button>
+            <span className="mono" style={{ minWidth: 16, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>{it.qty}</span>
+            <button onClick={() => setQty(i, it.qty + 1)} style={{ width: 26, height: 26, borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={12} /></button>
+            <button onClick={() => setQty(i, 0)} title="Ka saar · Remove" style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash2 size={12} /></button>
+          </div>
+        ))}
+        {!items.length && (
+          <div style={{ padding: '16px 4px', fontSize: 12.5, color: 'var(--danger)' }}>
+            Dalabku waa in uu haystaa ugu yaraan hal alaab — haddii aadan waxba rabin, Delete isticmaal ·
+            An order needs at least one item — use Delete on the whole order if none should remain.
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <div style={{ fontWeight: 800 }}>${total.toFixed(2)}</div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
+          <button className="btn btn-primary" disabled={!items.length || busy || !changed} onClick={submit}>{busy ? 'Keydinaya…' : 'Keydi · Save'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   const [methods, setMethods] = useState(null);
   const [methodId, setMethodId] = useState(null);
@@ -194,6 +266,7 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [addItemsOrder, setAddItemsOrder] = useState(null);
+  const [editItemsOrder, setEditItemsOrder] = useState(null);
   const [payOrder, setPayOrder] = useState(null);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
@@ -354,6 +427,9 @@ export default function Orders() {
                 {isPosOrder(o) ? (
                   !isPaid(o) && (
                     <>
+                      <button className="btn-outline btn-sm" style={{ height: 32 }} title="Wax ka beddel · Edit items" onClick={() => setEditItemsOrder(o)}>
+                        <Pencil size={13} strokeWidth={2.5} /> Edit
+                      </button>
                       <button className="btn-outline btn-sm" style={{ height: 32 }} title="Ku dar alaab · Add items" onClick={() => setAddItemsOrder(o)}>
                         <Plus size={13} strokeWidth={2.5} /> Ku dar
                       </button>
@@ -372,7 +448,9 @@ export default function Orders() {
                     )}
                   </>
                 )}
-                {canDelete && (
+                {/* A paid order is a financial record — the server refuses to delete it too,
+                    but hiding the button here is clearer than letting staff tap it and get an error. */}
+                {canDelete && !isPaid(o) && (
                   <button
                     title="Tirtir · Delete" onClick={() => removeOrder(o.id)}
                     style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -400,6 +478,13 @@ export default function Orders() {
           order={addItemsOrder} addToast={addToast}
           onClose={() => setAddItemsOrder(null)}
           onAdded={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
+        />
+      )}
+      {editItemsOrder && (
+        <EditItemsModal
+          order={editItemsOrder} addToast={addToast}
+          onClose={() => setEditItemsOrder(null)}
+          onUpdated={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
         />
       )}
       {payOrder && (

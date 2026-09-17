@@ -8,15 +8,18 @@ const Activity = require('../models/Activity');
 const AdminUser = require('../models/AdminUser');
 const PaymentAccount = require('../models/PaymentAccount');
 const SmsAccount = require('../models/SmsAccount');
+const SupportMessage = require('../models/SupportMessage');
 const { requireAdmin, signToken } = require('../middleware/auth');
 const { makeTableCode, slugify } = require('../utils/codes');
-const { emitToRestaurant, emitToAllRestaurants } = require('../socket');
+const { emitToRestaurant, emitToAllRestaurants, emitToAdmin } = require('../socket');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { dataSummary, purgeData } = require('../utils/restaurantData');
 const { subscriptionStatus, expiringSoonList } = require('../utils/subscription');
 const { logActivity, MODULE_LABEL } = require('../utils/activityLog');
 const { getRetentionSetting, setRetentionSetting } = require('../utils/activityRetention');
+const { getSupportRetentionSetting, setSupportRetentionSetting } = require('../utils/supportRetention');
 const { buildXlsx, buildPdf } = require('../utils/reportExport');
+const { upload } = require('../utils/upload');
 
 // Every admin.js Activity.create() call below is on behalf of the super admin acting on
 // a restaurant, so the actor is always req.auth.name (the signed-in admin), never the
@@ -117,7 +120,7 @@ router.get('/restaurants', async (req, res) => {
     const m = map.get(String(r._id)) || { orders: 0, revenue: 0 };
     return {
       id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username, plan: r.plan, status: r.status,
-      orderingEnabled: r.orderingEnabled !== false,
+      orderingEnabled: r.orderingEnabled !== false, supportEnabled: !!r.supportEnabled,
       subscriptionStatus: subscriptionStatus(r),
       hue: r.hue, orders: m.orders, revenue: '$' + m.revenue.toFixed(2),
       lastLoginAt: r.lastLoginAt || null, lastSeenAt: r.lastSeenAt || null,
@@ -156,7 +159,7 @@ router.get('/restaurants/:id', async (req, res) => {
   ]);
   res.json({
     id: r._id, name: r.name, city: r.city, owner: r.ownerName, username: r.username,
-    plan: r.plan, status: r.status, orderingEnabled: r.orderingEnabled !== false, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
+    plan: r.plan, status: r.status, orderingEnabled: r.orderingEnabled !== false, supportEnabled: !!r.supportEnabled, hue: r.hue, logoUrl: r.logoUrl, coverUrl: r.coverUrl,
     orders: orderCount, revenue: '$' + (revenueAgg[0]?.sum || 0).toFixed(2), createdAt: r.createdAt,
     lastLoginAt: r.lastLoginAt || null, lastSeenAt: r.lastSeenAt || null,
   });
@@ -220,6 +223,18 @@ router.patch('/restaurants/:id/ordering-toggle', async (req, res) => {
     message: `${r.name} QR/online ordering ${r.orderingEnabled ? 'enabled' : 'disabled'} by admin`,
   });
   res.json({ id: r._id, orderingEnabled: r.orderingEnabled });
+});
+
+router.patch('/restaurants/:id/support-toggle', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  r.supportEnabled = !r.supportEnabled;
+  await r.save();
+  logActivity({
+    restaurant: r._id, userName: adminName(req), module: 'support', action: 'Update',
+    message: `${r.name} Support Inbox ${r.supportEnabled ? 'enabled' : 'disabled'} by admin`,
+  });
+  res.json({ id: r._id, supportEnabled: r.supportEnabled });
 });
 
 // Impersonation: lets the super admin view a restaurant's own dashboard without
@@ -588,6 +603,95 @@ router.get('/activity-log.pdf', async (req, res) => {
     filterLines: [`Range: ${from || '—'}  ->  ${to || '—'}`],
     columns: ACTIVITY_COLUMNS, rows,
   }, res, `activity-log_${new Date().toISOString().slice(0, 10)}.pdf`);
+});
+
+// ---- Support Inbox (chat with every store that has it enabled) + retention policy ----
+
+function mapSupportMessage(m) {
+  return { id: m._id, sender: m.sender, senderName: m.senderName, text: m.text, imageUrl: m.imageUrl, createdAt: m.createdAt };
+}
+
+router.get('/settings/support-retention', async (req, res) => {
+  const s = await getSupportRetentionSetting();
+  res.json({ enabled: s.supportRetentionEnabled, days: s.supportRetentionDays });
+});
+
+router.patch('/settings/support-retention', async (req, res) => {
+  const { enabled, days } = req.body || {};
+  if (days !== undefined && !(Number(days) > 0)) return res.status(400).json({ error: 'days must be a positive number' });
+  const s = await setSupportRetentionSetting({ enabled, days });
+  res.json({ enabled: s.supportRetentionEnabled, days: s.supportRetentionDays });
+});
+
+// One row per store with Support enabled — last message preview + unread count, so the
+// inbox list reads like a normal chat app. Unread-first, then most recently active,
+// then alphabetical for stores nobody has messaged yet (so they're still reachable).
+router.get('/support/conversations', async (req, res) => {
+  const restaurants = await Restaurant.find({ supportEnabled: true }).select('name ownerName username hue logoUrl').lean();
+  const ids = restaurants.map((r) => r._id);
+  const [lastMessages, unreadAgg] = await Promise.all([
+    SupportMessage.aggregate([
+      { $match: { restaurant: { $in: ids } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$restaurant', text: { $first: '$text' }, imageUrl: { $first: '$imageUrl' }, createdAt: { $first: '$createdAt' }, sender: { $first: '$sender' } } },
+    ]),
+    SupportMessage.aggregate([
+      { $match: { restaurant: { $in: ids }, sender: 'restaurant', readByAdmin: false } },
+      { $group: { _id: '$restaurant', count: { $sum: 1 } } },
+    ]),
+  ]);
+  const lastMap = new Map(lastMessages.map((m) => [String(m._id), m]));
+  const unreadMap = new Map(unreadAgg.map((u) => [String(u._id), u.count]));
+  const rows = restaurants
+    .map((r) => {
+      const last = lastMap.get(String(r._id));
+      return {
+        id: r._id, name: r.name, owner: r.ownerName, username: r.username, hue: r.hue, logoUrl: r.logoUrl,
+        lastMessage: last ? (last.text || (last.imageUrl ? '📷 Photo' : '')) : '',
+        lastMessageAt: last?.createdAt || null,
+        lastSender: last?.sender || null,
+        unreadCount: unreadMap.get(String(r._id)) || 0,
+      };
+    })
+    .sort((a, b) => {
+      if (!!b.unreadCount !== !!a.unreadCount) return (b.unreadCount ? 1 : 0) - (a.unreadCount ? 1 : 0);
+      const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      if (at !== bt) return bt - at;
+      return a.name.localeCompare(b.name);
+    });
+  res.json(rows);
+});
+
+router.get('/support/conversations/:id/messages', async (req, res) => {
+  const r = await Restaurant.findById(req.params.id)
+    .select('name ownerName username hue logoUrl supportEnabled city plan status subscriptionEndsAt graceEndsAt')
+    .lean();
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const messages = await SupportMessage.find({ restaurant: req.params.id }).sort({ createdAt: 1 }).limit(500).lean();
+  // Opening a thread marks every store-sent message read — same "read on view" model used elsewhere.
+  await SupportMessage.updateMany({ restaurant: req.params.id, sender: 'restaurant', readByAdmin: false }, { readByAdmin: true });
+  res.json({
+    restaurant: {
+      id: r._id, name: r.name, owner: r.ownerName, username: r.username, hue: r.hue, logoUrl: r.logoUrl,
+      supportEnabled: r.supportEnabled, city: r.city, plan: r.plan, status: r.status,
+      subscriptionStatus: subscriptionStatus(r),
+    },
+    messages: messages.map(mapSupportMessage),
+  });
+});
+
+router.post('/support/conversations/:id/messages', upload.single('image'), async (req, res) => {
+  const r = await Restaurant.findById(req.params.id).select('name').lean();
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const text = String(req.body?.text || '').trim().slice(0, 2000);
+  const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
+  if (!text && !imageUrl) return res.status(400).json({ error: 'Message is empty' });
+  const msg = await SupportMessage.create({ restaurant: req.params.id, sender: 'admin', senderName: adminName(req), text, imageUrl });
+  const payload = mapSupportMessage(msg);
+  emitToRestaurant(req.params.id, 'support:message', { restaurantId: String(req.params.id), message: payload });
+  emitToAdmin('support:message', { restaurantId: String(req.params.id), restaurantName: r.name, message: payload });
+  res.status(201).json(payload);
 });
 
 module.exports = router;

@@ -13,6 +13,7 @@ import AdminSms from './pages/admin/Sms';
 import AdminSettings from './pages/admin/Settings';
 import AdminDataManager from './pages/admin/DataManager';
 import AdminActivityLog from './pages/admin/ActivityLog';
+import AdminSupportInbox from './pages/admin/SupportInbox';
 
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
 import RestaurantOverview from './pages/restaurant/Overview';
@@ -30,6 +31,7 @@ import QrTab from './pages/restaurant/QrTab';
 import Staff from './pages/restaurant/Staff';
 import RestaurantSettings from './pages/restaurant/Settings';
 import RestaurantActivityLog from './pages/restaurant/ActivityLog';
+import RestaurantSupport from './pages/restaurant/Support';
 
 import CustomerOrder from './pages/customer/CustomerOrder';
 import SubscriptionExpired from './pages/SubscriptionExpired';
@@ -49,7 +51,7 @@ function RequireRestaurant({ children }) {
 function DashboardIndex() {
   const { me } = useOutletContext();
   if (!me) return null;
-  const featureAllowed = (id) => (id === 'payments' ? !!me.paymentsEnabled : id === 'sms' ? !!me.smsEnabled : id === 'qr' ? me.orderingEnabled !== false : true);
+  const featureAllowed = (id) => (id === 'payments' ? !!me.paymentsEnabled : id === 'sms' ? !!me.smsEnabled : id === 'support' ? !!me.supportEnabled : id === 'qr' ? me.orderingEnabled !== false : true);
   if (me.role === 'staff') {
     const first = NAV_PAGES.find((p) => me.permissions?.includes(p.id) && featureAllowed(p.id));
     return <Navigate to={first ? first.id : 'orders'} replace />;
@@ -80,6 +82,7 @@ export default function App() {
               <Route path="notifications" element={<Notifications />} />
               <Route path="billing" element={<Billing />} />
               <Route path="activity-log" element={<AdminActivityLog />} />
+              <Route path="support-inbox" element={<AdminSupportInbox />} />
               <Route path="sms" element={<AdminSms />} />
               <Route path="data" element={<AdminDataManager />} />
               <Route path="settings" element={<AdminSettings />} />
@@ -107,6 +110,7 @@ export default function App() {
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />
               <Route path="activity" element={<RestaurantActivityLog />} />
+              <Route path="support" element={<RestaurantSupport />} />
               <Route path="staff" element={<Staff />} />
               <Route path="settings" element={<RestaurantSettings />} />
             </Route>

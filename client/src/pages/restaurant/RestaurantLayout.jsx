@@ -36,22 +36,30 @@ export default function RestaurantLayout() {
   const { confirm, confirmNode } = useConfirm();
   const soundOnRef = useRef(soundOn);
   soundOnRef.current = soundOn;
+  // Tracks whether the Support page is the one currently open, read inside the
+  // support:message socket handler below (whose effect doesn't re-run on navigation).
+  const onSupportPageRef = useRef(false);
 
   const isStaff = me?.role === 'staff';
   const allPages = useMemo(() => [...NAV_PAGES, STAFF_PAGE, SETTINGS_PAGE], []);
-  // Payments/SMS only appear once the super admin has connected an account for this restaurant.
-  // QR disappears entirely while the super admin has ordering switched off for this restaurant.
+  // Payments/SMS/Support only appear once the super admin has connected/enabled them for
+  // this restaurant. QR disappears entirely while the super admin has ordering switched off.
   const featureAllowed = (id) => {
     if (id === 'payments') return !!me?.paymentsEnabled;
     if (id === 'sms') return !!me?.smsEnabled;
+    if (id === 'support') return !!me?.supportEnabled;
     if (id === 'qr') return me?.orderingEnabled !== false;
     return true;
   };
   const visibleNav = useMemo(() => {
     const base = isStaff ? NAV_PAGES.filter((n) => me?.permissions?.includes(n.id)) : allPages;
-    return base.filter((n) => featureAllowed(n.id));
+    return base.filter((n) => featureAllowed(n.id)).map((n) => (
+      n.id === 'support' && me?.supportUnreadCount > 0 ? { ...n, badge: me.supportUnreadCount } : n
+    ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStaff, me, allPages]);
   const active = allPages.find((n) => location.pathname.includes(n.id))?.id || null;
+  onSupportPageRef.current = active === 'support';
   const hasAccess = !me || !active || (featureAllowed(active) && (!isStaff || me.permissions?.includes(active)));
   const homeId = isStaff ? (visibleNav[0]?.id || 'orders') : 'overview';
 
@@ -164,14 +172,29 @@ export default function RestaurantLayout() {
     function onSubscriptionUpdated(patch) {
       setMe((prev) => (prev ? { ...prev, ...patch } : prev));
     }
+    // A reply from platform support. The Support page itself marks it read (and shows
+    // it) if it's open; otherwise bump the sidebar badge optimistically — the next /me
+    // fetch reconciles the exact count.
+    function onSupportMessage({ message }) {
+      if (message.sender !== 'admin') return;
+      if (onSupportPageRef.current) return;
+      addToast({ title: 'Fariin cusub · Support', body: message.text || '📷 Photo' });
+      pushNotification('Fariin cusub · Support', message.text || '📷 Photo');
+      if (soundOnRef.current) playBeep();
+      ring();
+      setMe((prev) => (prev ? { ...prev, supportUnreadCount: (prev.supportUnreadCount || 0) + 1 } : prev));
+    }
     socket.on('order:new', onNewOrder);
     socket.on('notification:new', onNotification);
     socket.on('subscription:updated', onSubscriptionUpdated);
+    socket.on('support:message', onSupportMessage);
     return () => {
       socket.off('order:new', onNewOrder);
       socket.off('notification:new', onNotification);
       socket.off('subscription:updated', onSubscriptionUpdated);
+      socket.off('support:message', onSupportMessage);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id, addToast]);
 
   return (
