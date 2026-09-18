@@ -18,7 +18,7 @@ const { subscriptionStatus, expiringSoonList } = require('../utils/subscription'
 const { logActivity, MODULE_LABEL } = require('../utils/activityLog');
 const { getRetentionSetting, setRetentionSetting } = require('../utils/activityRetention');
 const { getSupportRetentionSetting, setSupportRetentionSetting } = require('../utils/supportRetention');
-const { buildXlsx, buildPdf } = require('../utils/reportExport');
+const { buildXlsx, buildPdf, fmtDate } = require('../utils/reportExport');
 const { upload } = require('../utils/upload');
 
 // Every admin.js Activity.create() call below is on behalf of the super admin acting on
@@ -548,6 +548,9 @@ const ACTIVITY_COLUMNS = [
 ];
 
 // Shared by the JSON list and both export formats so filters never drift out of sync.
+// No 'Z' suffix — see the matching comment on reportRange()/activityLogFilter() in
+// restaurant.js. Keeps "today" here meaning the same thing it means everywhere else
+// (server-local, Africa/Mogadishu in production), not UTC.
 async function buildActivityLogQuery(req) {
   const q = req.query || {};
   const filter = {};
@@ -556,8 +559,8 @@ async function buildActivityLogQuery(req) {
   const from = String(q.from || '').slice(0, 10);
   const to = String(q.to || '').slice(0, 10);
   const createdAt = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000Z');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999Z');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999');
   if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
   return { filter, from, to };
 }
@@ -590,7 +593,7 @@ router.get('/activity-log.xlsx', async (req, res) => {
     columns: ACTIVITY_COLUMNS, rows,
   });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="activity-log_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="activity-log_${fmtDate(new Date())}.xlsx"`);
   res.send(Buffer.from(buf));
 });
 
@@ -602,7 +605,7 @@ router.get('/activity-log.pdf', async (req, res) => {
     reportName: 'Activity Log', reportNameSo: 'Diiwaanka Dhaqdhaqaaqa',
     filterLines: [`Range: ${from || '—'}  ->  ${to || '—'}`],
     columns: ACTIVITY_COLUMNS, rows,
-  }, res, `activity-log_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }, res, `activity-log_${fmtDate(new Date())}.pdf`);
 });
 
 // ---- Support Inbox (chat with every store that has it enabled) + retention policy ----

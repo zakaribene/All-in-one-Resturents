@@ -25,7 +25,7 @@ const { chargeOrderPayment } = require('../utils/chargeOrder');
 const { decrypt } = require('../utils/crypto');
 const { sendSms } = require('../utils/hormuud');
 const tabaarak = require('../utils/tabaarak');
-const { buildXlsx, buildPdf, fmtMoney } = require('../utils/reportExport');
+const { buildXlsx, buildPdf, fmtMoney, fmtDate } = require('../utils/reportExport');
 const { logStoreActivity, MODULE_LABEL } = require('../utils/activityLog');
 const { upload } = require('../utils/upload');
 
@@ -859,12 +859,18 @@ router.delete('/expenses/:id', requirePermission('expenses'), async (req, res) =
 // ---- Reports (Sales + Expense, filterable, Excel / PDF export) ----
 const CHANNEL_LABEL = { table: 'Table', takeaway: 'Takeaway', online: 'Online', pos: 'POS' };
 
+// No 'Z' suffix here on purpose — that would anchor the boundary to UTC midnight,
+// 3 hours off from actual Mogadishu midnight (the server's own local timezone, which is
+// what "today" means everywhere else in the app: the wallet Today total, Revenue today,
+// the <input type="date"> the admin picked this range from). Letting the Date
+// constructor parse the plain "YYYY-MM-DDTHH:mm:ss" string in the server's local
+// timezone keeps this boundary consistent with those.
 function reportRange(q) {
   const from = String(q.from || '').slice(0, 10);
   const to = String(q.to || '').slice(0, 10);
   const range = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) range.$gte = new Date(from + 'T00:00:00.000Z');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) range.$lte = new Date(to + 'T23:59:59.999Z');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) range.$gte = new Date(from + 'T00:00:00.000');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) range.$lte = new Date(to + 'T23:59:59.999');
   return { from, to, range: (range.$gte || range.$lte) ? range : null };
 }
 
@@ -876,7 +882,7 @@ async function reportBrand(id) {
 function reportFilename(spec, ext) {
   const safe = String(spec.restaurant.name || 'restaurant').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'restaurant';
   const kind = spec.reportName.toLowerCase().split(' ')[0];
-  return `${safe}_${kind}_${new Date().toISOString().slice(0, 10)}.${ext}`;
+  return `${safe}_${kind}_${fmtDate(new Date())}.${ext}`;
 }
 
 const SALES_COLUMNS = [
@@ -895,13 +901,21 @@ async function buildSalesSpec(req) {
   const q = req.query || {};
   const { from, to, range } = reportRange(q);
   const filter = { restaurant: req.auth.id };
-  // Filtering to Paid dates by payment.paidAt (when the money actually landed) rather
-  // than createdAt (when the order was placed) — the same field Revenue-today and the
-  // wallet "Today" total now use — so a Paid + today filter here always agrees with
-  // them. Pending/All orders have no paidAt yet, so they stay dated by createdAt.
+  // Each order is matched against the date range by whichever date is actually
+  // meaningful for it: a paid order by payment.paidAt (when the money landed — the same
+  // field Revenue-today and the wallet "Today" total use), a still-pending order by
+  // createdAt (it has no paidAt yet). This $or applies regardless of the Status filter
+  // below, so filtering to a date always surfaces every order relevant to that date —
+  // paid ones by when they were paid, pending ones by when they were placed — instead of
+  // silently dropping a paid order from "today" just because it happened to be *placed*
+  // the evening before and paid after midnight. (When Status=Paid/Pending narrows things
+  // further below, the non-matching $or branch becomes self-contradictory and drops out
+  // on its own — no special-casing needed.)
   if (range) {
-    if (q.status === 'paid') filter['payment.paidAt'] = range;
-    else filter.createdAt = range;
+    filter.$or = [
+      { 'payment.status': 'paid', 'payment.paidAt': range },
+      { 'payment.status': { $ne: 'paid' }, createdAt: range },
+    ];
   }
   if (q.orderId && /^\d+$/.test(String(q.orderId).trim())) filter.number = Number(String(q.orderId).trim());
   if (q.channel && q.channel !== 'all') filter.channel = q.channel;
@@ -921,7 +935,10 @@ async function buildSalesSpec(req) {
     }
     return {
       number: o.number,
-      createdAt: o.createdAt,
+      // Show whichever date actually placed this row in the selected range — a paid
+      // order's paid date, a pending order's created date — so the column never looks
+      // like it disagrees with why the row is here.
+      createdAt: o.payment?.status === 'paid' && o.payment?.paidAt ? o.payment.paidAt : o.createdAt,
       channel: CHANNEL_LABEL[o.channel] || o.channel,
       itemsCount,
       discount: o.discount || 0,
@@ -1307,6 +1324,8 @@ const STORE_ACTIVITY_COLUMNS = [
   { header: 'Description', headerSo: 'Faahfaahin', key: 'description', w: 3, width: 44, wrap: true },
 ];
 
+// Same local-boundary reasoning as reportRange() above — no 'Z', so "today" here means
+// the same thing it means in the wallet Today total and Revenue today.
 function activityLogFilter(req) {
   const q = req.query || {};
   const filter = { restaurant: req.auth.id };
@@ -1314,8 +1333,8 @@ function activityLogFilter(req) {
   const from = String(q.from || '').slice(0, 10);
   const to = String(q.to || '').slice(0, 10);
   const createdAt = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000Z');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999Z');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999');
   if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
   return { filter, from, to };
 }

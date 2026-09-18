@@ -5,11 +5,18 @@ import { api, apiErrorMessage } from '../../lib/api';
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 
+// Local (browser) time, not UTC — an order paid at 00:13 local should read as today's
+// date here, the same as it does on the Orders page and in the Today stat tiles. A
+// UTC-formatted timestamp would show the previous calendar day for the first few hours
+// after local midnight (3h, at Mogadishu's UTC+3), which is exactly what looked like a
+// mismatch between this report and the rest of the dashboard.
+const pad2 = (n) => String(n).padStart(2, '0');
 function fmtCell(v, format) {
   if (v == null || v === '') return format === 'money' ? money(0) : '';
   if (format === 'money') return money(v);
-  if (format === 'date') return new Date(v).toISOString().slice(0, 10);
-  if (format === 'datetime') return new Date(v).toISOString().slice(0, 16).replace('T', ' ');
+  const d = format === 'date' || format === 'datetime' ? new Date(v) : null;
+  if (format === 'date') return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  if (format === 'datetime') return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   return String(v);
 }
 

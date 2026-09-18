@@ -28,8 +28,12 @@ function hslToHex(h, s = 62, l = 45) {
 }
 
 const fmtMoney = (n) => '$' + Number(n || 0).toFixed(2);
-const fmtDate = (d) => new Date(d).toISOString().slice(0, 10);
-const fmtDateTime = (d) => new Date(d).toISOString().slice(0, 16).replace('T', ' ');
+// Local (server timezone — Africa/Mogadishu in production), not UTC: an order paid at
+// 00:13 local reads back as "today" in the export, matching every other "today" figure
+// in the app, instead of the UTC calendar day (3 hours behind) an ISO string would give.
+const pad2 = (n) => String(n).padStart(2, '0');
+const fmtDate = (d) => { const x = new Date(d); return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`; };
+const fmtDateTime = (d) => { const x = new Date(d); return `${fmtDate(x)} ${pad2(x.getHours())}:${pad2(x.getMinutes())}`; };
 
 function cellText(row, col) {
   const v = row[col.key];
