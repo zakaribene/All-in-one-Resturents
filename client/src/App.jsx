@@ -28,6 +28,7 @@ import RestaurantSms from './pages/restaurant/Sms';
 import Products from './pages/restaurant/Products';
 import Categories from './pages/restaurant/Categories';
 import QrTab from './pages/restaurant/QrTab';
+import Customers from './pages/restaurant/Customers';
 import Staff from './pages/restaurant/Staff';
 import RestaurantSettings from './pages/restaurant/Settings';
 import RestaurantActivityLog from './pages/restaurant/ActivityLog';
@@ -109,6 +110,7 @@ export default function App() {
               <Route path="products" element={<Products />} />
               <Route path="categories" element={<Categories />} />
               <Route path="qr" element={<QrTab />} />
+              <Route path="customers" element={<Customers />} />
               <Route path="activity" element={<RestaurantActivityLog />} />
               <Route path="support" element={<RestaurantSupport />} />
               <Route path="staff" element={<Staff />} />

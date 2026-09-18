@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, Wallet, ArrowLeftRight, Receipt, BarChart3, MessageSquare, UtensilsCrossed, FolderOpen, QrCode, Users, Settings, History, Headset } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, ShoppingCart, CreditCard, Wallet, ArrowLeftRight, Receipt, BarChart3, MessageSquare, UtensilsCrossed, FolderOpen, QrCode, Users, Settings, History, Headset, HandCoins } from 'lucide-react';
 
 // Pages a staff account can be granted access to. Keep ids in sync with
 // server/src/models/Staff.js PAGE_IDS and the route paths under /dashboard/*.
@@ -15,6 +15,7 @@ export const NAV_PAGES = [
   { id: 'products', so: 'Cuntooyinka', en: 'Products', icon: UtensilsCrossed },
   { id: 'categories', so: 'Qaybaha', en: 'Categories', icon: FolderOpen },
   { id: 'qr', so: 'QR Codes', en: 'QR Codes', icon: QrCode },
+  { id: 'customers', so: 'Macaamiisha', en: 'Customers', icon: HandCoins },
   { id: 'activity', so: 'Diiwaanka Dhaqdhaqaaqa', en: 'Activity Log', icon: History },
   { id: 'support', so: 'Taageero', en: 'Support', icon: Headset },
 ];
@@ -29,4 +30,5 @@ export const SETTINGS_PAGE = { id: 'settings', so: 'Dejinta', en: 'Settings', ic
 export const SUB_PERMISSIONS = [
   { id: 'pos_discount', pageId: 'pos', so: 'Dhimis · Discount-ka', en: 'Can apply discounts' },
   { id: 'orders_delete', pageId: 'orders', so: 'Tirtir dalabyada', en: 'Can delete orders' },
+  { id: 'pos_debt', pageId: 'pos', so: 'Dalabka deyn ku dalici kara', en: 'Can charge orders to a customer account (Deyn)' },
 ];

@@ -1,9 +1,12 @@
 const mongoose = require('mongoose');
 
-const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'paymethods', 'transfers', 'expenses', 'reports', 'sms', 'products', 'categories', 'qr', 'activity', 'support'];
+const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'paymethods', 'transfers', 'expenses', 'reports', 'sms', 'products', 'categories', 'qr', 'activity', 'support', 'customers'];
 
 // Fine-grained action permissions — only meaningful alongside their parent page id above.
-const SUB_PERMISSION_IDS = ['pos_discount', 'orders_delete'];
+// pos_debt: can charge an order to a customer's account ("Deyn") from POS, and assign an
+// existing pending order to one from the Orders page — separate from plain POS access
+// (and from the 'customers' page permission, which only covers viewing/settling debt).
+const SUB_PERMISSION_IDS = ['pos_discount', 'orders_delete', 'pos_debt'];
 
 const StaffSchema = new mongoose.Schema({
   restaurant: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true, index: true },

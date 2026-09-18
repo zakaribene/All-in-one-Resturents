@@ -17,6 +17,8 @@ const SmsLog = require('../models/SmsLog');
 const Staff = require('../models/Staff');
 const Activity = require('../models/Activity');
 const SupportMessage = require('../models/SupportMessage');
+const Customer = require('../models/Customer');
+const DebtPayment = require('../models/DebtPayment');
 const { requireRestaurantOrStaff, requirePermission, requireAnyPermission, requireOwnerOnly } = require('../middleware/auth');
 const { subscriptionStatus } = require('../utils/subscription');
 const { makeTableCode } = require('../utils/codes');
@@ -234,15 +236,21 @@ router.get('/orders', requireAnyPermission(['overview', 'orders']), async (req, 
   const orders = await Order.find({
     restaurant: req.auth.id,
     $or: [{ 'payment.method': 'pay_at_table' }, { 'payment.status': 'paid' }],
-  }).sort({ createdAt: -1 }).limit(200).lean();
+  }).sort({ createdAt: -1 }).limit(200).populate('debtor', 'name phone').lean();
   res.json(orders.map(mapOrder));
 });
 
 function mapOrder(o) {
+  // `debtor` may come in populated ({ _id, name, phone }) from a route that needs the
+  // name for display, or as a bare ObjectId/null everywhere else — handle both so this
+  // one mapper works for every call site without them each remembering to populate.
+  const debtor = o.debtor && typeof o.debtor === 'object' ? o.debtor : null;
   return {
     id: o._id, number: o.number, channel: o.channel, tableLabel: o.tableLabel, phone: o.phone, note: o.note,
     items: o.items, total: o.total, discount: o.discount || 0, status: o.status, payment: o.payment, createdAt: o.createdAt,
     createdByName: o.createdByName || null, createdByRole: o.createdByRole || null,
+    debtorId: debtor ? String(debtor._id) : (o.debtor ? String(o.debtor) : null),
+    debtorName: debtor ? debtor.name : null,
   };
 }
 
@@ -340,6 +348,10 @@ router.patch('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be edited here' });
   if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Order already paid — it can no longer be edited' });
+  // Charged to a customer's account — its total is now tracked on Customer.balance, so
+  // changing the order's total here would silently desync the two. Locked the same way
+  // a paid order is.
+  if (order.debtor) return res.status(400).json({ error: 'This order is charged to a customer account — it can no longer be edited' });
 
   const cleanItems = items
     .map((it) => ({
@@ -363,18 +375,55 @@ router.patch('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async
   res.json(payload);
 });
 
+// Charges an already-placed pending order to a customer's account after the fact — e.g.
+// a normal POS order was sent as pending, and only then did the customer say they
+// couldn't pay. Same account/balance mechanics as a debt order created directly from
+// POS (see /pos/debt-orders below), just applied to an existing order instead of a new
+// one. Requires pos_debt the same way — it's still giving away product on credit.
+router.post('/orders/:id/assign-debt', requireAnyPermission(['orders', 'pos']), async (req, res) => {
+  const canDebt = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_debt');
+  if (!canDebt) return res.status(403).json({ error: 'You are not allowed to charge orders to a customer account · Fasax kuma lihid' });
+
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be charged to a customer account here' });
+  if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Order already paid — it cannot be charged to a customer account' });
+  if (order.debtor) return res.status(400).json({ error: 'Order is already charged to a customer account' });
+
+  const customer = await resolveOrCreateCustomer(req, req.body || {});
+  if (customer.error) return res.status(customer.status).json({ error: customer.error });
+
+  order.debtor = customer._id;
+  await order.save();
+  customer.balance = Math.round((customer.balance + order.total) * 100) / 100;
+  await customer.save();
+
+  logStoreActivity(req, {
+    module: 'customers', action: 'Update',
+    message: `Order #${order.number} charged to ${customer.name}'s account (${fmtMoney(order.total)})`,
+  });
+  const payload = mapOrder({ ...order.toObject(), debtor: customer });
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json(payload);
+});
+
 router.delete('/orders/:id', requireAnyPermission(['orders', 'payments']), async (req, res) => {
   if (req.auth.role === 'staff' && !req.auth.permissions?.includes('orders_delete')) {
     return res.status(403).json({ error: 'You do not have permission to delete orders · Fasax kuma lihid' });
   }
-  // A paid order is a financial record from here on — protect it from deletion the same
-  // way the edit endpoint above protects it from being changed, regardless of permission.
-  // The exclusion lives in the delete filter itself (atomic: no separate check-then-delete
-  // race where the order could get marked paid in between) — a null result then means
-  // either "not found" or "found but paid," disambiguated by a quick lookup only in that case.
-  const o = await Order.findOneAndDelete({ _id: req.params.id, restaurant: req.auth.id, 'payment.status': { $ne: 'paid' } });
+  // A paid order — or one charged to a customer account (its total lives on
+  // Customer.balance now) — is a financial record from here on; protect it from
+  // deletion the same way the edit endpoint above protects it from being changed,
+  // regardless of permission. The exclusion lives in the delete filter itself (atomic:
+  // no separate check-then-delete race where the order could get marked paid/debited
+  // in between) — a null result then means "not found" or "found but locked,"
+  // disambiguated by a quick lookup only in that case.
+  const o = await Order.findOneAndDelete({
+    _id: req.params.id, restaurant: req.auth.id, 'payment.status': { $ne: 'paid' }, debtor: null,
+  });
   if (!o) {
-    const stillThere = await Order.exists({ _id: req.params.id, restaurant: req.auth.id });
+    const stillThere = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id }).select('debtor payment.status').lean();
+    if (stillThere?.debtor) return res.status(400).json({ error: 'This order is charged to a customer account — it cannot be deleted' });
     if (stillThere) return res.status(400).json({ error: 'A paid order cannot be deleted · Dalab la bixiyay lama tirtiri karo' });
     return res.status(404).json({ error: 'Not found' });
   }
@@ -554,6 +603,80 @@ router.post('/pos/orders', requirePermission('pos'), async (req, res) => {
   return res.status(402).json(result.body);
 });
 
+// Shared by /pos/debt-orders and /orders/:id/assign-debt: either look up an existing
+// customer by id, or create one from a name (+ optional phone) typed inline in the
+// picker. Returns { error, status } instead of throwing so both call sites can respond
+// with their own res.json in one line.
+async function resolveOrCreateCustomer(req, { customerId, customerName, customerPhone }) {
+  if (customerId) {
+    const customer = await Customer.findOne({ _id: customerId, restaurant: req.auth.id });
+    if (!customer) return { error: 'Customer not found', status: 404 };
+    return customer;
+  }
+  const cleanName = String(customerName || '').trim();
+  if (!cleanName) return { error: 'Customer name is required', status: 400 };
+  return Customer.create({ restaurant: req.auth.id, name: cleanName, phone: String(customerPhone || '').trim() });
+}
+
+// Charges a POS order straight to a customer's account ("Deyn") instead of collecting
+// payment — the order ships pending, and the customer's balance carries its total until
+// they pay some or all of it back (see the Customers routes below). Gated by the
+// pos_debt sub-permission, separate from plain POS access — an owner may not want every
+// staff member able to give away product on credit.
+router.post('/pos/debt-orders', requirePermission('pos'), async (req, res) => {
+  const canDebt = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_debt');
+  if (!canDebt) return res.status(403).json({ error: 'You are not allowed to charge orders to a customer account · Fasax kuma lihid' });
+
+  const { note, waiterName, items, discount } = req.body || {};
+  const cleanWaiterName = String(waiterName || '').trim();
+  if (!cleanWaiterName) return res.status(400).json({ error: 'Waiter name is required' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
+
+  const customer = await resolveOrCreateCustomer(req, req.body || {});
+  if (customer.error) return res.status(customer.status).json({ error: customer.error });
+
+  const restaurant = await Restaurant.findById(req.auth.id);
+  const productIds = items.map((i) => i.productId);
+  const products = await Product.find({ _id: { $in: productIds }, restaurant: req.auth.id, status: 'active' }).lean();
+  const productMap = new Map(products.map((p) => [String(p._id), p]));
+  const orderItems = [];
+  for (const i of items) {
+    const p = productMap.get(String(i.productId));
+    if (!p) continue;
+    const qty = Math.max(1, Number(i.qty) || 1);
+    orderItems.push({ name: p.nameEn, qty, price: p.price });
+  }
+  if (!orderItems.length) return res.status(400).json({ error: 'No valid items in cart' });
+
+  const canDiscount = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_discount');
+  const subtotal = orderItems.reduce((a, i) => a + i.price * i.qty, 0);
+  const discountAmount = canDiscount ? Math.min(Math.max(0, Number(discount) || 0), subtotal) : 0;
+  const total = Math.round((subtotal - discountAmount) * 100) / 100;
+
+  const number = restaurant.nextOrderNumber();
+  await restaurant.save();
+  const collector = await resolveCollector(req);
+  const order = await Order.create({
+    restaurant: req.auth.id, number, channel: 'pos',
+    note: String(note || '').trim(), items: orderItems, total, discount: discountAmount, status: 'new',
+    createdByName: cleanWaiterName || collector.name, createdByRole: collector.role,
+    debtor: customer._id,
+  });
+  await Product.bulkWrite(items.map((i) => ({
+    updateOne: { filter: { _id: i.productId }, update: { $inc: { sold: Math.max(1, Number(i.qty) || 1) } } },
+  })));
+  customer.balance = Math.round((customer.balance + total) * 100) / 100;
+  await customer.save();
+
+  logStoreActivity(req, {
+    module: 'customers', action: 'Create',
+    message: `POS order #${order.number} charged to ${customer.name}'s account (${fmtMoney(total)})`,
+  });
+  const payload = mapOrder({ ...order.toObject(), debtor: customer });
+  emitToRestaurant(req.auth.id, 'order:new', payload);
+  res.status(201).json(payload);
+});
+
 router.post('/pos/orders/:id/pay-at-table', requirePermission('pos'), async (req, res) => {
   const { manualMethodId } = req.body || {};
   const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
@@ -729,6 +852,94 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
       [String(from._id)]: Math.round((debited.balance || 0) * 100) / 100,
       [String(to._id)]: Math.round((credited?.balance || 0) * 100) / 100,
     },
+  });
+});
+
+// ---- Customers (Deyn / store credit) ----
+function mapCustomer(c) {
+  return { id: c._id, name: c.name, phone: c.phone, balance: Math.round((c.balance || 0) * 100) / 100, createdAt: c.createdAt };
+}
+
+function mapDebtPayment(p) {
+  return {
+    id: p._id, amount: Math.round((p.amount || 0) * 100) / 100,
+    methodName: p.methodName, staffName: p.staffName, note: p.note || '', createdAt: p.createdAt,
+  };
+}
+
+// List/search — deliberately open to plain POS access too (not just the 'customers'
+// page), since the POS/Orders "Deyn" picker needs to look customers up by name/phone
+// without requiring the fuller Customers-page permission that viewing balance history
+// and recording settlements requires below.
+router.get('/customers', requireAnyPermission(['customers', 'pos']), async (req, res) => {
+  const q = req.query || {};
+  const filter = { restaurant: req.auth.id };
+  if (q.q && String(q.q).trim()) {
+    const re = new RegExp(String(q.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = [{ name: re }, { phone: re }];
+  }
+  const customers = await Customer.find(filter).sort({ balance: -1, name: 1 }).limit(500).lean();
+  res.json(customers.map(mapCustomer));
+});
+
+router.post('/customers', requirePermission('customers'), async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Name is required · Magaca waa lagama maarmaan' });
+  const customer = await Customer.create({ restaurant: req.auth.id, name, phone: String(req.body?.phone || '').trim() });
+  logStoreActivity(req, { module: 'customers', action: 'Create', message: `Customer "${customer.name}" added` });
+  res.status(201).json(mapCustomer(customer));
+});
+
+router.get('/customers/:id', requirePermission('customers'), async (req, res) => {
+  const customer = await Customer.findOne({ _id: req.params.id, restaurant: req.auth.id }).lean();
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const [orders, payments] = await Promise.all([
+    Order.find({ restaurant: req.auth.id, debtor: customer._id }).sort({ createdAt: -1 }).limit(200).lean(),
+    DebtPayment.find({ restaurant: req.auth.id, customer: customer._id }).sort({ createdAt: -1 }).limit(200).lean(),
+  ]);
+  res.json({ customer: mapCustomer(customer), orders: orders.map(mapOrder), payments: payments.map(mapDebtPayment) });
+});
+
+// Settles some or all of what a customer owes — the money they physically hand over
+// lands in whichever wallet the staff picks, exactly like a normal order payment does
+// (PaymentMethod.balance goes up), while the customer's own balance goes down by the
+// same amount. Not tied to any one debt order — a payment settles the running balance,
+// which can span several of them.
+router.post('/customers/:id/payments', requirePermission('customers'), async (req, res) => {
+  const customer = await Customer.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const amount = Math.round((Number(req.body?.amount) || 0) * 100) / 100;
+  if (!(amount > 0)) return res.status(400).json({ error: 'Qadarka waa inuu ka weyn yahay 0 · Amount must be greater than 0' });
+  if (amount > customer.balance + 0.001) {
+    return res.status(400).json({ error: `Qadarku kama badnaan karo cashaanka ${fmtMoney(customer.balance)} · Amount cannot exceed the balance owed` });
+  }
+  const methodId = req.body?.methodId;
+  if (!methodId || !mongoose.Types.ObjectId.isValid(methodId)) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
+  const method = await PaymentMethod.findOne({ _id: methodId, restaurant: req.auth.id, status: 'active' });
+  if (!method) return res.status(400).json({ error: 'Hab lama helin · Wallet not found' });
+  const note = String(req.body?.note || '').trim().slice(0, 200);
+
+  const collector = await resolveCollector(req);
+  customer.balance = Math.round((customer.balance - amount) * 100) / 100;
+  await customer.save();
+  const credited = await PaymentMethod.findOneAndUpdate(
+    { _id: method._id, restaurant: req.auth.id },
+    { $inc: { balance: amount } },
+    { new: true },
+  );
+  const payment = await DebtPayment.create({
+    restaurant: req.auth.id, customer: customer._id, amount,
+    method: method._id, methodName: method.name, staffName: collector.name, note,
+  });
+
+  logStoreActivity(req, {
+    module: 'customers', action: 'Update',
+    message: `${customer.name} paid ${fmtMoney(amount)} toward their balance (${method.name})`,
+  });
+  res.status(201).json({
+    customer: mapCustomer(customer),
+    payment: mapDebtPayment(payment),
+    balance: { [String(method._id)]: Math.round((credited?.balance || 0) * 100) / 100 },
   });
 });
 

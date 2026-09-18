@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet, Pencil } from 'lucide-react';
+import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet, Pencil, Receipt } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
 import Modal from '../../components/Modal';
+import CustomerPicker from '../../components/CustomerPicker';
 
 function channelMeta(channel, tableLabel) {
   if (channel === 'online') return { label: 'Online', Icon: Globe, bg: 'var(--purple-bg)', fg: 'var(--purple)' };
@@ -52,6 +53,7 @@ function formatDateTime(date) {
 // instead just track whether the bill has been collected yet.
 function isPosOrder(o) { return o.channel === 'pos'; }
 function isPaid(o) { return o.payment?.status === 'paid'; }
+function isDebt(o) { return !!o.debtorId; }
 
 function AddItemsModal({ order, onClose, onAdded, addToast }) {
   const [products, setProducts] = useState(null);
@@ -260,14 +262,58 @@ function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   );
 }
 
+// Charges an already-placed pending order to a customer's account — the "the customer
+// says they have no money" case, after the order was already sent as a normal pending
+// order rather than through POS's own "Deyn" button.
+function AssignDebtModal({ order, onClose, onAssigned, addToast }) {
+  const [customer, setCustomer] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!customer || busy) return;
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/restaurant/orders/${order.id}/assign-debt`, {
+        customerId: customer.isNew ? undefined : customer.id,
+        customerName: customer.isNew ? customer.name : undefined,
+        customerPhone: customer.isNew ? customer.phone : undefined,
+      });
+      onAssigned(data);
+      addToast({ title: 'Waxaa lagu daray cashaanka · Charged to account', body: `#${data.number} · ${customer.name}`, tone: 'success' });
+      onClose();
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={380}>
+      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Deyn u dir · Charge to customer account</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>Order #{order.number} · ${order.total.toFixed(2)}</div>
+      <label className="field-label">Macmiil · Customer *</label>
+      <div style={{ marginBottom: 16 }}>
+        <CustomerPicker value={customer} onChange={setCustomer} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !customer} onClick={submit}>{busy ? 'Diraya…' : 'Xaqiiji · Confirm'}</button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Orders() {
   const { me, soundOn, setSoundOn, addToast, confirm } = useOutletContext();
   const canDelete = me?.role !== 'staff' || me?.permissions?.includes('orders_delete');
+  const canDebt = me?.role !== 'staff' || me?.permissions?.includes('pos_debt');
   const [orders, setOrders] = useState([]);
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [addItemsOrder, setAddItemsOrder] = useState(null);
   const [editItemsOrder, setEditItemsOrder] = useState(null);
   const [payOrder, setPayOrder] = useState(null);
+  const [debtOrder, setDebtOrder] = useState(null);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -409,7 +455,11 @@ export default function Orders() {
               <div className="mono">{o.phone || <span style={{ color: 'var(--muted-3)' }}>—</span>}</div>
               <div style={{ fontWeight: 800 }}>${o.total.toFixed(2)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                {isPosOrder(o) ? (
+                {isDebt(o) ? (
+                  <span style={{ background: 'color-mix(in srgb, var(--accent) 14%, var(--surface))', color: 'var(--accent)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Receipt size={12} strokeWidth={2.5} /> Deyn · {o.debtorName}
+                  </span>
+                ) : isPosOrder(o) ? (
                   isPaid(o)
                     ? <span style={{ background: 'var(--success-bg)', color: 'var(--success)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>La bixiyay · Paid</span>
                     : <span style={{ background: 'var(--warning-bg)', color: 'var(--warning-fg)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>Sugaya · Pending</span>
@@ -424,7 +474,11 @@ export default function Orders() {
               </div>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
                 <button className="btn-outline btn-sm" style={{ height: 32 }} onClick={() => setReceiptOrder(o)}>View</button>
-                {isPosOrder(o) ? (
+                {/* A debt order settles through the Customers page only — its total is
+                    tracked on the customer's balance now, so editing/paying/deleting it
+                    here would desync the two. The server refuses these too; hiding them
+                    here is clearer than letting staff tap into an error. */}
+                {isPosOrder(o) && !isDebt(o) ? (
                   !isPaid(o) && (
                     <>
                       <button className="btn-outline btn-sm" style={{ height: 32 }} title="Wax ka beddel · Edit items" onClick={() => setEditItemsOrder(o)}>
@@ -433,12 +487,17 @@ export default function Orders() {
                       <button className="btn-outline btn-sm" style={{ height: 32 }} title="Ku dar alaab · Add items" onClick={() => setAddItemsOrder(o)}>
                         <Plus size={13} strokeWidth={2.5} /> Ku dar
                       </button>
+                      {canDebt && (
+                        <button className="btn-outline btn-sm" style={{ height: 32 }} title="Deyn u dir · Charge to customer account" onClick={() => setDebtOrder(o)}>
+                          <Receipt size={13} strokeWidth={2.5} /> Deyn
+                        </button>
+                      )}
                       <button className="btn btn-primary btn-sm" style={{ height: 32 }} title="Bixi dalabka · Mark as paid" onClick={() => setPayOrder(o)}>
                         <Wallet size={13} strokeWidth={2.25} /> Bixi
                       </button>
                     </>
                   )
-                ) : (
+                ) : !isPosOrder(o) && (
                   <>
                     {o.status === 'new' && <button className="btn btn-primary btn-sm" style={{ height: 32 }} onClick={() => accept(o.id)}>Aqbal · Accept</button>}
                     {o.status === 'preparing' && (
@@ -448,9 +507,9 @@ export default function Orders() {
                     )}
                   </>
                 )}
-                {/* A paid order is a financial record — the server refuses to delete it too,
-                    but hiding the button here is clearer than letting staff tap it and get an error. */}
-                {canDelete && !isPaid(o) && (
+                {/* A paid order — or one charged to a customer account — is a financial
+                    record; the server refuses to delete it too. */}
+                {canDelete && !isPaid(o) && !isDebt(o) && (
                   <button
                     title="Tirtir · Delete" onClick={() => removeOrder(o.id)}
                     style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -492,6 +551,13 @@ export default function Orders() {
           order={payOrder} addToast={addToast}
           onClose={() => setPayOrder(null)}
           onPaid={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
+        />
+      )}
+      {debtOrder && (
+        <AssignDebtModal
+          order={debtOrder} addToast={addToast}
+          onClose={() => setDebtOrder(null)}
+          onAssigned={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
         />
       )}
     </div>

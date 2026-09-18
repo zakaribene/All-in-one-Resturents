@@ -38,6 +38,12 @@ const OrderSchema = new mongoose.Schema({
   discount: { type: Number, default: 0, min: 0 },
   status: { type: String, enum: ['new', 'preparing', 'done'], default: 'new' },
   payment: { type: PaymentSchema, default: () => ({}) },
+  // Set once this order is charged to a customer's account ("Deyn") — either created
+  // that way from the start (POS debt order) or a normal pending order assigned to a
+  // customer afterward. Its total is now tracked on Customer.balance instead of ever
+  // being settled through this order's own payment.status — see restaurant.js's
+  // customer/debt routes. Locked from edit/delete the same as a paid order once set.
+  debtor: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
 }, { timestamps: true });
 
 OrderSchema.index(

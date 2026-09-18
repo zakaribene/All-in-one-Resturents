@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock, Receipt } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import ReceiptModal from '../../components/ReceiptModal';
+import CustomerPicker from '../../components/CustomerPicker';
 
 const pinKeyStyle = {
   height: 56, fontSize: 20, fontWeight: 700, borderRadius: 14,
@@ -49,7 +50,10 @@ export default function Pos() {
   const [phoneError, setPhoneError] = useState(false);
   const [waiterName, setWaiterName] = useState('');
   const [waiterNameError, setWaiterNameError] = useState(false);
-  const [payNow, setPayNow] = useState(true);
+  // 'pay' (online, if connected) | 'manual' (wallet, collected later) | 'debt' (charged
+  // to a customer account instead of collected at all — see CustomerPicker below).
+  const [payMode, setPayMode] = useState('manual');
+  const [debtCustomer, setDebtCustomer] = useState(null);
   const [provider, setProvider] = useState(null);
   const [stage, setStage] = useState('cart');
   const [declineInfo, setDeclineInfo] = useState(null);
@@ -77,7 +81,7 @@ export default function Pos() {
       setProducts(p.data.filter((x) => x.status === 'active'));
       setPaymentOptions(po.data.paymentOptions);
       setProvider(po.data.defaultProvider);
-      setPayNow(!!po.data.paymentOptions.length);
+      setPayMode(po.data.paymentOptions.length ? 'pay' : 'manual');
     }).finally(() => setLoading(false));
   }, []);
 
@@ -121,9 +125,11 @@ export default function Pos() {
   const cartCount = cartLines.reduce((a, l) => a + l.qty, 0);
   const subtotal = cartLines.reduce((a, l) => a + l.product.price * l.qty, 0);
   const canDiscount = me?.role !== 'staff' || me?.permissions?.includes('pos_discount');
+  const canDebt = me?.role !== 'staff' || me?.permissions?.includes('pos_debt');
   const discountAmount = canDiscount ? Math.min(Math.max(0, Number(discount) || 0), subtotal) : 0;
   const total = subtotal - discountAmount;
-  const useOnlinePay = payNow && paymentOptions.length > 0;
+  const debtMode = payMode === 'debt';
+  const useOnlinePay = payMode === 'pay' && paymentOptions.length > 0;
 
   function addToCart(pid) { setCart((c) => ({ ...c, [pid]: (c[pid] || 0) + 1 })); }
   function decCart(pid) {
@@ -141,11 +147,34 @@ export default function Pos() {
 
   function resetOrder() {
     setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setWaiterName(''); setWaiterNameError(false); setStage('cart');
-    setDeclineInfo(null); setPlaceError(''); setClientRequestId('');
+    setDeclineInfo(null); setPlaceError(''); setClientRequestId(''); setDebtCustomer(null);
+  }
+
+  async function submitDebt() {
+    if (!debtCustomer) { setPlaceError('Dooro ama ku dar macmiil · Choose or add a customer'); return; }
+    if (!waiterName.trim()) { setWaiterNameError(true); return; }
+    setPlaceError(''); setBusy(true);
+    try {
+      const items = cartLines.map((l) => ({ productId: l.product.id, qty: l.qty }));
+      const { data } = await api.post('/restaurant/pos/debt-orders', {
+        items, waiterName: waiterName.trim(), discount: discountAmount,
+        customerId: debtCustomer.isNew ? undefined : debtCustomer.id,
+        customerName: debtCustomer.isNew ? debtCustomer.name : undefined,
+        customerPhone: debtCustomer.isNew ? debtCustomer.phone : undefined,
+      });
+      addToast({ title: 'Waxaa lagu daray cashaanka · Charged to account', body: `#${data.number} · $${total.toFixed(2)} · ${debtCustomer.name}`, tone: 'success' });
+      resetOrder();
+      setReceiptOrder(data);
+    } catch (e) {
+      setPlaceError(apiErrorMessage(e, 'Failed to place order'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit() {
     if (!cartLines.length) return;
+    if (debtMode) return submitDebt();
     if (useOnlinePay && !phone.trim()) { setPhoneError(true); return; }
     if (!waiterName.trim()) { setWaiterNameError(true); return; }
     setPlaceError(''); setBusy(true);
@@ -333,18 +362,65 @@ export default function Pos() {
               ))}
             </div>
             <div style={{ borderTop: '1px solid var(--border-soft)', padding: 18 }}>
-              <label className="field-label">
-                Lambarka macmiilka · Customer phone {useOnlinePay ? '*' : <span style={{ color: 'var(--muted-3)', fontWeight: 500 }}>(ikhtiyaari · optional)</span>}
-              </label>
-              <div style={{ position: 'relative', marginBottom: phoneError ? 4 : 12 }}>
-                <Phone size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-                <input
-                  className={'field-input' + (phoneError ? ' error' : '')} style={{ paddingLeft: 32 }}
-                  placeholder="063 xxxxxxx" value={phone}
-                  onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
-                />
+              <label className="field-label">Lacag-bixinta · Payment</label>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                {!!paymentOptions.length && (
+                  <button
+                    type="button"
+                    className={'chip' + (payMode === 'pay' ? ' active' : '')} style={{ flex: '1 1 90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    onClick={() => setPayMode('pay')}
+                  >
+                    <Wallet size={13} strokeWidth={2.25} /> Bixi hadda
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={'chip' + (payMode === 'manual' ? ' active' : '')} style={{ flex: '1 1 90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  onClick={() => setPayMode('manual')}
+                >
+                  <HandCoins size={13} strokeWidth={2.25} /> Manual
+                </button>
+                {canDebt && (
+                  <button
+                    type="button"
+                    className={'chip' + (payMode === 'debt' ? ' active' : '')} style={{ flex: '1 1 90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    onClick={() => setPayMode('debt')}
+                  >
+                    <Receipt size={13} strokeWidth={2.25} /> Deyn
+                  </button>
+                )}
               </div>
-              {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
+              {payMode === 'pay' && paymentOptions.length > 1 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                  {paymentOptions.map((p) => (
+                    <button key={p.provider} type="button" className={'chip' + (provider === p.provider ? ' active' : '')} onClick={() => setProvider(p.provider)}>{p.label}</button>
+                  ))}
+                </div>
+              )}
+
+              {debtMode ? (
+                <>
+                  <label className="field-label">Macmiil · Customer *</label>
+                  <div style={{ marginBottom: 14 }}>
+                    <CustomerPicker value={debtCustomer} onChange={setDebtCustomer} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label className="field-label">
+                    Lambarka macmiilka · Customer phone {useOnlinePay ? '*' : <span style={{ color: 'var(--muted-3)', fontWeight: 500 }}>(ikhtiyaari · optional)</span>}
+                  </label>
+                  <div style={{ position: 'relative', marginBottom: phoneError ? 4 : 12 }}>
+                    <Phone size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+                    <input
+                      className={'field-input' + (phoneError ? ' error' : '')} style={{ paddingLeft: 32 }}
+                      placeholder="063 xxxxxxx" value={phone}
+                      onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
+                    />
+                  </div>
+                  {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
+                </>
+              )}
 
               <label className="field-label">Waiter name *</label>
               <div style={{ position: 'relative', marginBottom: waiterNameError ? 4 : 14 }}>
@@ -356,35 +432,6 @@ export default function Pos() {
                 />
               </div>
               {waiterNameError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Waiter name is required</div>}
-
-              {!!paymentOptions.length && (
-                <>
-                  <label className="field-label">Lacag-bixinta · Payment</label>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                    <button
-                      type="button"
-                      className={'chip' + (payNow ? ' active' : '')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                      onClick={() => setPayNow(true)}
-                    >
-                      <Wallet size={13} strokeWidth={2.25} /> Bixi hadda · Pay now
-                    </button>
-                    <button
-                      type="button"
-                      className={'chip' + (!payNow ? ' active' : '')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                      onClick={() => setPayNow(false)}
-                    >
-                      <HandCoins size={13} strokeWidth={2.25} /> Manual
-                    </button>
-                  </div>
-                  {payNow && paymentOptions.length > 1 && (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                      {paymentOptions.map((p) => (
-                        <button key={p.provider} type="button" className={'chip' + (provider === p.provider ? ' active' : '')} onClick={() => setProvider(p.provider)}>{p.label}</button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
 
               {canDiscount && (
                 <>
@@ -414,8 +461,11 @@ export default function Pos() {
 
               {placeError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{placeError}</div>}
 
-              <button className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }} disabled={!cartLines.length || busy} onClick={submit}>
-                {busy ? 'Diraya…' : (payNow && paymentOptions.length ? 'Bixi & Dir · Charge & send' : 'Dir dalabka · Send order')}
+              <button
+                className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }}
+                disabled={!cartLines.length || busy || (debtMode && !debtCustomer)} onClick={submit}
+              >
+                {busy ? 'Diraya…' : debtMode ? 'Deyn u dir · Charge to account' : (useOnlinePay ? 'Bixi & Dir · Charge & send' : 'Dir dalabka · Send order')}
               </button>
             </div>
           </>

@@ -22,6 +22,7 @@ const MODULE_LABEL = {
   restaurant: 'Restaurant',
   data: 'Data',
   support: 'Support',
+  customers: 'Customers',
 };
 
 const ACTION_DOT = {
