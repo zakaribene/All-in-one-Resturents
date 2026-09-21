@@ -26,6 +26,7 @@ export default function PayTransfer() {
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [amount, setAmount] = useState('');
+  const [isFull, setIsFull] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
@@ -50,6 +51,7 @@ export default function PayTransfer() {
   function swap() {
     setFromId(toId);
     setToId(fromId);
+    setIsFull(false);
   }
 
   async function submit(e) {
@@ -62,13 +64,13 @@ export default function PayTransfer() {
     setBusy(true); setFormError('');
     try {
       const { data } = await api.post('/restaurant/payment-transfers', {
-        fromMethodId: from.id, toMethodId: to.id, amount: amountNum, note: note.trim(),
+        fromMethodId: from.id, toMethodId: to.id, amount: amountNum, note: note.trim(), full: isFull,
       });
       setMethods((prev) => prev.map((m) => (
         m.id in data.balances ? { ...m, balance: data.balances[m.id] } : m
       )));
       setTransfers((prev) => [data.transfer, ...prev]);
-      setAmount(''); setNote('');
+      setAmount(''); setNote(''); setIsFull(false);
       addToast({
         title: 'Wareejinta waa la sameeyay · Transfer complete',
         body: `${money(data.transfer.amount)} · ${data.transfer.fromMethodName} → ${data.transfer.toMethodName}`,
@@ -118,7 +120,7 @@ export default function PayTransfer() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'end' }}>
               <div>
                 <label className="field-label">Ka · From</label>
-                <select className="field-input" value={fromId} onChange={(e) => setFromId(e.target.value)}>
+                <select className="field-input" value={fromId} onChange={(e) => { setFromId(e.target.value); setIsFull(false); }}>
                   <option value="">— Dooro · Select —</option>
                   {activeMethods.map((m) => (
                     <option key={m.id} value={m.id} disabled={m.id === toId}>
@@ -156,7 +158,7 @@ export default function PayTransfer() {
             <input
               className="field-input" type="number" min="0" step="0.01" inputMode="decimal"
               placeholder="0.00" value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => { setAmount(e.target.value); setIsFull(false); }}
               style={{ marginBottom: 4, fontWeight: 800, fontSize: 18 }}
             />
             {from && (
@@ -167,7 +169,7 @@ export default function PayTransfer() {
                 {' '}
                 {!overdraw && (
                   <button
-                    type="button" onClick={() => setAmount(String(from.balance))}
+                    type="button" onClick={() => { setAmount(String(from.balance)); setIsFull(true); }}
                     style={{ border: 'none', background: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12 }}
                   >
                     · Dhammaan · Max

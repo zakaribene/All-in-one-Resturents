@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { BarChart3, Receipt, FileSpreadsheet, FileText, RotateCcw, Search } from 'lucide-react';
+import { BarChart3, Receipt, Package, FileSpreadsheet, FileText, RotateCcw, Search } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
@@ -52,6 +52,7 @@ async function blobError(err) {
 const TABS = [
   { id: 'sales', en: 'Sales Report', so: 'Warbixinta Iibka', Icon: BarChart3 },
   { id: 'expenses', en: 'Expense Report', so: 'Warbixinta Kharashka', Icon: Receipt },
+  { id: 'products', en: 'Products Report', so: 'Warbixinta Alaabta', Icon: Package },
 ];
 
 export default function Reports() {
@@ -92,6 +93,7 @@ export default function Reports() {
 function ReportView({ kind }) {
   const { addToast } = useOutletContext();
   const isSales = kind === 'sales';
+  const isProducts = kind === 'products';
 
   const today = useMemo(() => new Date(), []);
   const monthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today]);
@@ -103,6 +105,7 @@ function ReportView({ kind }) {
   const [status, setStatus] = useState('all');
   const [method, setMethod] = useState('all');
   const [category, setCategory] = useState('all');
+  const [sort, setSort] = useState('all');
 
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -119,12 +122,14 @@ function ReportView({ kind }) {
       if (channel !== 'all') p.channel = channel;
       if (status !== 'all') p.status = status;
       if (method !== 'all') p.method = method;
+    } else if (isProducts) {
+      if (sort === 'least') p.sort = 'least';
     } else {
       if (category !== 'all') p.category = category;
       if (method !== 'all') p.method = method;
     }
     return p;
-  }, [from, to, orderId, channel, status, method, category, isSales]);
+  }, [from, to, orderId, channel, status, method, category, sort, isSales, isProducts]);
 
   const fetchReport = useCallback(() => {
     setBusy(true);
@@ -157,12 +162,12 @@ function ReportView({ kind }) {
   function reset() {
     setFrom(toInputDate(monthStart));
     setTo(toInputDate(today));
-    setOrderId(''); setChannel('all'); setStatus('all'); setMethod('all'); setCategory('all');
+    setOrderId(''); setChannel('all'); setStatus('all'); setMethod('all'); setCategory('all'); setSort('all');
   }
 
   // Filter dropdown options derived from the rows currently loaded.
   const methodOptions = useMemo(() => {
-    if (!data?.rows) return [];
+    if (isProducts || !data?.rows) return [];
     const key = isSales ? 'payMethod' : 'methodName';
     const set = new Set();
     for (const r of data.rows) {
@@ -172,12 +177,12 @@ function ReportView({ kind }) {
       set.add(v);
     }
     return [...set].sort();
-  }, [data, isSales]);
+  }, [data, isSales, isProducts]);
 
   const categoryOptions = useMemo(() => {
-    if (isSales || !data?.rows) return [];
+    if (isSales || isProducts || !data?.rows) return [];
     return [...new Set(data.rows.map((r) => r.categoryName).filter(Boolean))].sort();
-  }, [data, isSales]);
+  }, [data, isSales, isProducts]);
 
   const rowCount = data?.rows?.length || 0;
 
@@ -218,7 +223,7 @@ function ReportView({ kind }) {
             </>
           )}
 
-          {!isSales && (
+          {!isSales && !isProducts && (
             <Field label="Qayb · Category">
               <select className="field-input" value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: 160 }}>
                 <option value="all">Dhammaan · All</option>
@@ -227,13 +232,25 @@ function ReportView({ kind }) {
             </Field>
           )}
 
-          <Field label={isSales ? 'Lacag-bixin · Payment' : 'Hab · Method'}>
-            <select className="field-input" value={method} onChange={(e) => setMethod(e.target.value)} style={{ minWidth: 150 }}>
-              <option value="all">Dhammaan · All</option>
-              {isSales && <option value="online">Online</option>}
-              {methodOptions.filter((m) => m !== 'online').map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </Field>
+          {isProducts && (
+            <Field label="Kala sooc · Sort">
+              <select className="field-input" value={sort} onChange={(e) => setSort(e.target.value)} style={{ minWidth: 200 }}>
+                <option value="all">Dhammaan (ugu badan → ugu yar) · All</option>
+                <option value="most">Ugu iibka badan · Most sold</option>
+                <option value="least">Ugu iibka yar · Least sold</option>
+              </select>
+            </Field>
+          )}
+
+          {!isProducts && (
+            <Field label={isSales ? 'Lacag-bixin · Payment' : 'Hab · Method'}>
+              <select className="field-input" value={method} onChange={(e) => setMethod(e.target.value)} style={{ minWidth: 150 }}>
+                <option value="all">Dhammaan · All</option>
+                {isSales && <option value="online">Online</option>}
+                {methodOptions.filter((m) => m !== 'online').map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Field>
+          )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--muted-3)', alignSelf: 'center' }}>
             <Search size={14} strokeWidth={2.5} />
@@ -287,7 +304,7 @@ function ReportView({ kind }) {
       {loaded && data && !!rowCount && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', opacity: busy ? 0.55 : 1, transition: 'opacity .15s' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isSales ? 1000 : 720 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isSales ? 1000 : isProducts ? 780 : 720 }}>
               <thead>
                 <tr style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
                   {data.columns.map((c) => (
@@ -308,7 +325,7 @@ function ReportView({ kind }) {
                       <td key={c.key} style={{
                         padding: '10px 16px', textAlign: c.align === 'right' ? 'right' : 'left',
                         whiteSpace: c.key === 'note' ? 'normal' : 'nowrap',
-                        fontWeight: c.key === 'total' || c.key === 'amount' ? 700 : 400,
+                        fontWeight: c.key === 'total' || c.key === 'amount' || c.key === 'revenue' ? 700 : 400,
                         color: c.key === 'amount' ? 'var(--danger)' : 'var(--text)',
                       }}>
                         {fmtCell(row[c.key], c.format)}

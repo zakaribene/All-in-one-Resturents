@@ -799,8 +799,8 @@ router.get('/payment-transfers', requirePermission('transfers'), async (req, res
 });
 
 router.post('/payment-transfers', requirePermission('transfers'), async (req, res) => {
-  const { fromMethodId, toMethodId, note } = req.body || {};
-  const amount = Math.round((Number(req.body?.amount) || 0) * 100) / 100;
+  const { fromMethodId, toMethodId, note, full } = req.body || {};
+  let amount = Math.round((Number(req.body?.amount) || 0) * 100) / 100;
 
   if (!mongoose.Types.ObjectId.isValid(fromMethodId) || !mongoose.Types.ObjectId.isValid(toMethodId)) {
     return res.status(400).json({ error: 'Dooro labada hab · Choose both wallets' });
@@ -808,7 +808,7 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
   if (String(fromMethodId) === String(toMethodId)) {
     return res.status(400).json({ error: 'Isku hab lama wareejin karo · Pick two different wallets' });
   }
-  if (!(amount > 0)) {
+  if (!full && !(amount > 0)) {
     return res.status(400).json({ error: 'Qadarka waa inuu ka weyn yahay 0 · Amount must be greater than 0' });
   }
 
@@ -821,14 +821,35 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
     return res.status(400).json({ error: 'Habka waa inuu firfircoon yahay · Both wallets must be active' });
   }
 
-  // Debit atomically so two transfers can't overdraw the same wallet.
-  const debited = await PaymentMethod.findOneAndUpdate(
-    { _id: from._id, restaurant: req.auth.id, balance: { $gte: amount } },
-    { $inc: { balance: -amount } },
-    { new: true },
-  );
-  if (!debited) {
-    return res.status(400).json({ error: `Balance ku filan ma jiro ${from.name} · Not enough balance in ${from.name}` });
+  let fromNewBalance;
+  if (full) {
+    // "Transfer all" zeroes the source wallet outright instead of debiting a fixed
+    // amount the client computed from its (rounded-for-display) balance. The stored
+    // balance can carry sub-cent float drift from many past $inc's — invisible on the
+    // 2-decimal display but enough that debiting the displayed number can under-shoot
+    // the real balance and leave a stray $0.01 behind. Zeroing the live value directly
+    // is immune to that drift by construction.
+    const zeroed = await PaymentMethod.findOneAndUpdate(
+      { _id: from._id, restaurant: req.auth.id, balance: { $gt: 0 } },
+      [{ $set: { balance: 0 } }],
+      { new: false, updatePipeline: true },
+    );
+    if (!zeroed) {
+      return res.status(400).json({ error: `Balance ku filan ma jiro ${from.name} · Not enough balance in ${from.name}` });
+    }
+    amount = Math.round((zeroed.balance || 0) * 100) / 100;
+    fromNewBalance = 0;
+  } else {
+    // Debit atomically so two transfers can't overdraw the same wallet.
+    const debited = await PaymentMethod.findOneAndUpdate(
+      { _id: from._id, restaurant: req.auth.id, balance: { $gte: amount } },
+      { $inc: { balance: -amount } },
+      { new: true },
+    );
+    if (!debited) {
+      return res.status(400).json({ error: `Balance ku filan ma jiro ${from.name} · Not enough balance in ${from.name}` });
+    }
+    fromNewBalance = Math.round((debited.balance || 0) * 100) / 100;
   }
   const credited = await PaymentMethod.findOneAndUpdate(
     { _id: to._id, restaurant: req.auth.id },
@@ -849,7 +870,7 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
   res.status(201).json({
     transfer: mapTransfer(transfer),
     balances: {
-      [String(from._id)]: Math.round((debited.balance || 0) * 100) / 100,
+      [String(from._id)]: fromNewBalance,
       [String(to._id)]: Math.round((credited?.balance || 0) * 100) / 100,
     },
   });
@@ -1249,6 +1270,90 @@ async function buildExpensesSpec(req) {
   };
 }
 
+const PRODUCTS_COLUMNS = [
+  { header: 'Product', headerSo: 'Alaabta', key: 'name', w: 2.2, width: 26 },
+  { header: 'Category', headerSo: 'Qaybta', key: 'categoryName', w: 1.6, width: 18 },
+  { header: 'Qty sold', headerSo: 'Tirada la iibiyay', key: 'qty', w: 1.1, width: 12, align: 'right', format: 'int' },
+  { header: 'Revenue', headerSo: 'Dakhliga', key: 'revenue', w: 1.3, width: 14, align: 'right', format: 'money' },
+  { header: 'Avg price', headerSo: 'Qiimaha celceliska', key: 'avgPrice', w: 1.2, width: 13, align: 'right', format: 'money' },
+];
+
+async function buildProductsSpec(req) {
+  const q = req.query || {};
+  const { from, to, range } = reportRange(q);
+  const filter = { restaurant: req.auth.id };
+  // Same paid-vs-pending date matching as the Sales report, so a product's qty here
+  // for a given range always agrees with the orders that range surfaces there.
+  if (range) {
+    filter.$or = [
+      { 'payment.status': 'paid', 'payment.paidAt': range },
+      { 'payment.status': { $ne: 'paid' }, createdAt: range },
+    ];
+  }
+
+  const orders = await Order.find(filter).select('items').lean();
+  const sold = new Map(); // order item name -> { qty, revenue }
+  for (const o of orders) {
+    for (const it of o.items || []) {
+      const cur = sold.get(it.name) || { qty: 0, revenue: 0 };
+      cur.qty += it.qty || 0;
+      cur.revenue += (it.price || 0) * (it.qty || 0);
+      sold.set(it.name, cur);
+    }
+  }
+
+  // Every product in the catalog gets a row — including ones with zero sales in this
+  // range, so a "least sold" sort actually surfaces them — matched to its sales by the
+  // name snapshot stored on each order item (orders don't keep a product reference).
+  const products = await Product.find({ restaurant: req.auth.id }).populate('category').lean();
+  const rows = products.map((p) => {
+    const s = sold.get(p.nameEn) || { qty: 0, revenue: 0 };
+    sold.delete(p.nameEn);
+    return {
+      name: p.nameEn,
+      categoryName: p.category?.nameEn || '—',
+      qty: s.qty,
+      revenue: Math.round(s.revenue * 100) / 100,
+      avgPrice: s.qty ? Math.round((s.revenue / s.qty) * 100) / 100 : p.price,
+    };
+  });
+  // Sales recorded under a name that no longer matches a current product (deleted or
+  // renamed since) still count — just without a category.
+  for (const [name, s] of sold) {
+    rows.push({
+      name, categoryName: '—', qty: s.qty,
+      revenue: Math.round(s.revenue * 100) / 100,
+      avgPrice: s.qty ? Math.round((s.revenue / s.qty) * 100) / 100 : 0,
+    });
+  }
+
+  const asc = q.sort === 'least';
+  rows.sort((a, b) => asc ? a.qty - b.qty : b.qty - a.qty);
+
+  const sumQty = rows.reduce((a, r) => a + r.qty, 0);
+  const sumRevenue = rows.reduce((a, r) => a + r.revenue, 0);
+
+  const filterLines = [
+    `Range: ${from || '—'}  ->  ${to || '—'}`,
+    `Sort: ${asc ? 'Least sold first' : 'Most sold first'}`,
+  ];
+
+  return {
+    restaurant: await reportBrand(req.auth.id),
+    reportName: 'Products Report', reportNameSo: 'Warbixinta Alaabta',
+    filterLines,
+    summary: [
+      { label: 'Products · Alaabta', value: String(rows.length) },
+      { label: 'Qty sold · Tirada', value: String(sumQty) },
+      { label: 'Revenue · Dakhliga', value: fmtMoney(sumRevenue) },
+      { label: 'Avg / product · Celceliska', value: fmtMoney(rows.length ? sumRevenue / rows.length : 0) },
+    ],
+    columns: PRODUCTS_COLUMNS,
+    rows,
+    totalsRow: { label: 'TOTAL', values: { qty: sumQty, revenue: sumRevenue } },
+  };
+}
+
 function specToJson(spec) {
   return {
     reportName: spec.reportName,
@@ -1290,6 +1395,17 @@ router.get('/reports/expenses.xlsx', requirePermission('reports'), async (req, r
 });
 router.get('/reports/expenses.pdf', requirePermission('reports'), async (req, res) => {
   const spec = await buildExpensesSpec(req);
+  buildPdf(spec, res, reportFilename(spec, 'pdf'));
+});
+
+router.get('/reports/products', requirePermission('reports'), async (req, res) => {
+  res.json(specToJson(await buildProductsSpec(req)));
+});
+router.get('/reports/products.xlsx', requirePermission('reports'), async (req, res) => {
+  await sendXlsx(res, await buildProductsSpec(req));
+});
+router.get('/reports/products.pdf', requirePermission('reports'), async (req, res) => {
+  const spec = await buildProductsSpec(req);
   buildPdf(spec, res, reportFilename(spec, 'pdf'));
 });
 

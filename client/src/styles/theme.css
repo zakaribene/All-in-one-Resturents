@@ -68,7 +68,7 @@ body {
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: #1D4FD7; }
-button { font-family: inherit; }
+button { font-family: inherit; color: inherit; }
 input, select, textarea { font-family: inherit; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
