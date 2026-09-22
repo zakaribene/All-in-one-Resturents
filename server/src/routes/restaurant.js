@@ -710,17 +710,20 @@ router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']),
   const methods = await PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean();
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  // "Today" is keyed off the order's actual payment.paidAt (not the collection ledger
-  // row's own createdAt, and not the order's createdAt) — the single date field every
-  // "today" figure in the app now agrees on. The $lookup also self-heals a collection
-  // row whose order no longer exists (e.g. one left over from before order deletion
-  // reversed these rows): with no matching order, payment.paidAt can't fall in range,
-  // so it silently drops out instead of inflating the total.
+  // "Today" is keyed off the order's actual payment.paidAt for a row attributed to one
+  // order (not the ledger row's own createdAt, and not the order's createdAt) — the
+  // same date field every other "today" figure in the app agrees on. A row with no
+  // order (a customer debt settlement — see /customers/:id/payments — pays down a
+  // running balance, not one specific order) falls back to its own createdAt instead,
+  // which for a settlement *is* the meaningful date. A row whose order no longer exists
+  // (left over from before order deletion started reversing these rows) falls back the
+  // same way, but that's always in the past for a historical row, so it can't wrongly
+  // inflate *today's* total even though the fallback technically applies to it too.
   const rows = await PaymentCollection.aggregate([
     { $match: { restaurant: new mongoose.Types.ObjectId(req.auth.id) } },
-    { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'order' } },
-    { $unwind: '$order' },
-    { $match: { 'order.payment.paidAt': { $gte: start } } },
+    { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'orderDoc' } },
+    { $addFields: { relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.payment.paidAt', 0] }, '$createdAt'] } } },
+    { $match: { relevantDate: { $gte: start } } },
     { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
   ]);
   const byId = new Map(rows.map(r => [String(r._id), r]));
@@ -899,6 +902,12 @@ router.get('/customers', requireAnyPermission(['customers', 'pos']), async (req,
     const re = new RegExp(String(q.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     filter.$or = [{ name: re }, { phone: re }];
   }
+  // The Customers page's default (no search typed) view asks for this explicitly — once
+  // someone has paid off everything they owed, they drop off the "who do I need to
+  // collect from" list. CustomerPicker (POS/Orders "Deyn") never passes this — it needs
+  // to find ANY existing customer, including fully-settled ones, so staff reuse the same
+  // record instead of creating a duplicate the next time that person runs a tab.
+  if (q.owing) filter.balance = { $gt: 0.001 };
   const customers = await Customer.find(filter).sort({ balance: -1, name: 1 }).limit(500).lean();
   res.json(customers.map(mapCustomer));
 });
@@ -952,15 +961,47 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
     restaurant: req.auth.id, customer: customer._id, amount,
     method: method._id, methodName: method.name, staffName: collector.name, note,
   });
+  // `order: null` — a settlement pays down the customer's running balance, not one
+  // specific order, so there's nothing to link it to. Still recorded so the wallet's
+  // "today" total (which sums this ledger) reflects money collected this way too, not
+  // just money attributed straight to an order.
+  await PaymentCollection.create({
+    restaurant: req.auth.id, method: method._id, methodName: method.name,
+    order: null, orderNumber: null, amount, staff: collector.id, staffName: collector.name,
+  });
+
+  // A customer's individual debt orders are never settled one at a time — only once
+  // their whole balance is cleared do we know every order charged to them has actually
+  // been paid for. At that point, flip all of them from the dormant "Deyn" state to
+  // Paid, the same as any other order that just got its bill collected — otherwise
+  // they'd sit forever marked pending even though the money is now in hand.
+  let settledOrders = [];
+  if (customer.balance <= 0.001) {
+    const now = new Date();
+    const openOrders = await Order.find({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } });
+    for (const o of openOrders) {
+      o.payment.status = 'paid';
+      o.payment.paidAt = now;
+      o.payment.method = 'pay_at_table';
+      o.payment.manualMethodName = method.name;
+      o.payment.collectedByName = collector.name;
+      await o.save();
+      const payload = mapOrder(o.toObject());
+      settledOrders.push(payload);
+      emitToRestaurant(req.auth.id, 'order:updated', payload);
+    }
+  }
 
   logStoreActivity(req, {
     module: 'customers', action: 'Update',
-    message: `${customer.name} paid ${fmtMoney(amount)} toward their balance (${method.name})`,
+    message: `${customer.name} paid ${fmtMoney(amount)} toward their balance (${method.name})`
+      + (settledOrders.length ? ` — balance cleared, ${settledOrders.length} order(s) marked paid` : ''),
   });
   res.status(201).json({
     customer: mapCustomer(customer),
     payment: mapDebtPayment(payment),
     balance: { [String(method._id)]: Math.round((credited?.balance || 0) * 100) / 100 },
+    settledOrders,
   });
 });
 

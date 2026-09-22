@@ -45,7 +45,14 @@ function CustomerDetailModal({ customerId, onClose, addToast, onSettled }) {
     setBusy(true);
     try {
       const { data: res } = await api.post(`/restaurant/customers/${customerId}/payments`, { amount: amountNum, methodId, note: note.trim() });
-      addToast({ title: 'Lacagta waa la diiwaan geliyay · Payment recorded', body: `${money(amountNum)} · ${res.payment.methodName}`, tone: 'success' });
+      const settledCount = res.settledOrders?.length || 0;
+      addToast({
+        title: 'Lacagta waa la diiwaan geliyay · Payment recorded',
+        body: settledCount
+          ? `${money(amountNum)} · ${res.payment.methodName} — cashaanka waa la dhammeystiray, ${settledCount} dalab ayaa la bixiyay · balance cleared, ${settledCount} order(s) marked paid`
+          : `${money(amountNum)} · ${res.payment.methodName}`,
+        tone: 'success',
+      });
       setAmount(''); setNote('');
       onSettled?.(res.customer);
       load();
@@ -144,17 +151,21 @@ export default function Customers() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
 
+  // No search typed: only who still owes something — the "who do I need to collect
+  // from" view, so a customer drops off the list the moment they're fully paid up.
+  // Typing a search hits the backend without that filter, so it can still find someone
+  // by name even after their balance has reached $0 (reusing the same record for a new
+  // tab later, rather than the picker creating a duplicate "customer").
   function load() {
-    api.get('/restaurant/customers').then((r) => setCustomers(r.data)).catch((e) => setError(apiErrorMessage(e)));
+    const q = query.trim();
+    const params = q ? { q } : { owing: 1 };
+    api.get('/restaurant/customers', { params }).then((r) => setCustomers(r.data)).catch((e) => setError(apiErrorMessage(e)));
   }
-  useEffect(load, []);
-
-  const filtered = useMemo(() => {
-    if (!customers) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) => c.name.toLowerCase().includes(q) || (c.phone || '').toLowerCase().includes(q));
-  }, [customers, query]);
+  useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   const totalOwed = useMemo(() => (customers || []).reduce((a, c) => a + c.balance, 0), [customers]);
   const debtorCount = useMemo(() => (customers || []).filter((c) => c.balance > 0).length, [customers]);
@@ -185,22 +196,26 @@ export default function Customers() {
       {error && <div style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</div>}
       {!customers && !error && <div className="text-muted">Loading…</div>}
 
-      {customers && !filtered.length && (
+      {customers && !customers.length && (
         <div className="card" style={{ padding: '44px 24px', textAlign: 'center' }}>
           <HandCoins size={30} strokeWidth={1.6} color="var(--muted-3)" style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Weli macmiil deyn ah ma jiro · No customers yet</div>
-          <div style={{ fontSize: 13, color: 'var(--muted-2)', marginTop: 4 }}>
-            Waxaa lagu daraa marka POS lagu doorto "Deyn" · Added from the POS page's "Deyn" option.
+          <div style={{ fontWeight: 700, fontSize: 15 }}>
+            {query.trim() ? 'Wax macmiil ah lama helin · No matches' : 'Cid deyn ku leh ma jirto hadda · No one owes anything right now'}
           </div>
+          {!query.trim() && (
+            <div style={{ fontSize: 13, color: 'var(--muted-2)', marginTop: 4 }}>
+              Waxaa lagu daraa marka POS lagu doorto "Deyn" · Added from the POS page's "Deyn" option.
+            </div>
+          )}
         </div>
       )}
 
-      {customers && !!filtered.length && (
+      {customers && !!customers.length && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 40px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
             <div>Macmiil · Customer</div><div>Lambar · Phone</div><div style={{ textAlign: 'right' }}>Wadarta · Balance</div><div />
           </div>
-          {filtered.map((c) => (
+          {customers.map((c) => (
             <button
               key={c.id} onClick={() => setSelectedId(c.id)}
               style={{
@@ -224,7 +239,14 @@ export default function Customers() {
         <CustomerDetailModal
           customerId={selectedId} addToast={addToast}
           onClose={() => setSelectedId(null)}
-          onSettled={(updated) => setCustomers((prev) => prev?.map((c) => (c.id === updated.id ? updated : c)))}
+          onSettled={(updated) => setCustomers((prev) => {
+            if (!prev) return prev;
+            // Fully paid off, and we're on the default "who still owes" view (no search
+            // typed) — this customer drops off the list immediately rather than sitting
+            // there at $0.00 until the next reload.
+            if (updated.balance <= 0 && !query.trim()) return prev.filter((c) => c.id !== updated.id);
+            return prev.map((c) => (c.id === updated.id ? updated : c));
+          })}
         />
       )}
     </div>
