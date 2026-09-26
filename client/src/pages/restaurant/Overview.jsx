@@ -82,7 +82,7 @@ export default function Overview() {
           background: `hsl(${me?.hue ?? 212} 65% 95%)`, color: `hsl(${me?.hue ?? 212} 55% 42%)`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18,
         }}>
-          {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me?.name?.[0] || '·')}
+          {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (me?.name?.[0] || '·')}
         </div>
         <div>
           <h1 className="page-title" style={{ fontSize: 24, marginBottom: 2 }}>{me?.name} · Dashboard</h1>

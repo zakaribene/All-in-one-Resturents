@@ -234,6 +234,10 @@ input, select, textarea { font-family: inherit; }
     position: absolute; left: 0; top: 0; margin: 0; padding: 0; width: 80mm; font-size: 15px;
     font-family: 'Courier New', Courier, monospace; font-weight: 700; color: #000;
   }
+  /* The logo badge has a tinted background for on-screen display — on a monochrome
+     thermal printer that tint just dithers into a muddy gray box behind the logo, so
+     drop it for print and let the logo's own (usually white) background show instead. */
+  #receipt-print .receipt-logo-box { background: #fff !important; }
 }
 
 /* ============================================================

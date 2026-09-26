@@ -64,7 +64,7 @@ export default function ProfileMenu({ me, setMe, onClose }) {
               overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22,
               color: `hsl(${me.hue ?? 212} 55% 42%)`,
             }}>
-              {me.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me.name?.[0] || '·')}
+              {me.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (me.name?.[0] || '·')}
             </div>
             {!isStaff && (
               <button

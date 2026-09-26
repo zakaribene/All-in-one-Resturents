@@ -32,11 +32,11 @@ function CustomerStatementModal({ customer, orders, restaurant, onClose, onViewO
     <Modal onClose={onClose} width={360}>
       <div id="receipt-print" style={{ fontFamily: "'Courier New', Courier, monospace" }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 14 }}>
-          <div style={{
+          <div className="receipt-logo-box" style={{
             width: 56, height: 56, borderRadius: 16, background: `hsl(${restaurant?.hue ?? 212} 65% 95%)`, color: `hsl(${restaurant?.hue ?? 212} 55% 42%)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22, marginBottom: 10, overflow: 'hidden',
           }}>
-            {restaurant?.logoUrl ? <img src={restaurant.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (restaurant?.name?.[0] || 'M')}
+            {restaurant?.logoUrl ? <img src={restaurant.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (restaurant?.name?.[0] || 'M')}
           </div>
           <div style={{ fontWeight: 800, fontSize: 15, fontFamily: 'var(--font)' }}>{restaurant?.name}</div>
           <div style={{ fontSize: 12, color: '#000', fontWeight: 800, marginTop: 6 }}>Diiwaanka Deynta · Debt Statement</div>

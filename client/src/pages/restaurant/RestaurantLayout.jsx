@@ -234,7 +234,7 @@ export default function RestaurantLayout() {
                   width: 22, height: 22, borderRadius: 7, background: `hsl(${me?.hue ?? 212} 65% 95%)`, color: `hsl(${me?.hue ?? 212} 55% 42%)`,
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, overflow: 'hidden', marginRight: 8, verticalAlign: 'middle',
                 }}>
-                  {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me?.name?.[0] || '·')}
+                  {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (me?.name?.[0] || '·')}
                 </div>
                 <span className="hide-xs">Profile</span>
               </button>
@@ -254,7 +254,7 @@ export default function RestaurantLayout() {
                 width: 38, height: 38, borderRadius: 11, background: `hsl(${me?.hue ?? 212} 65% 95%)`, color: `hsl(${me?.hue ?? 212} 55% 42%)`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, overflow: 'hidden',
               }}>
-                {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (me?.name?.[0] || '·')}
+                {me?.logoUrl ? <img src={me.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (me?.name?.[0] || '·')}
               </div>
               <div style={{ lineHeight: 1.2 }}>
                 <div style={{ fontWeight: 800, fontSize: 14 }}>{me?.name || 'Loading…'}</div>
