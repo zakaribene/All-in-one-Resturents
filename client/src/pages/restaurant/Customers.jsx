@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, HandCoins, Phone, Receipt, Wallet } from 'lucide-react';
+import { Search, HandCoins, Phone, Receipt, Wallet, Printer } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
+import ReceiptModal from '../../components/ReceiptModal';
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 
@@ -15,7 +16,84 @@ function timeAgo(date) {
   return new Date(date).toLocaleDateString();
 }
 
-function CustomerDetailModal({ customerId, onClose, addToast, onSettled }) {
+function fullDate(date) {
+  return new Date(date).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// A printable statement of what a customer currently owes — every still-unpaid debt
+// order with the date it was taken, plus the running total — so staff can hand the
+// customer something on paper instead of reading numbers off the screen. Reuses the
+// same #receipt-print / @media print machinery as the POS receipt (see theme.css and
+// ReceiptModal), in its own modal so it doesn't get tangled up with the settle/add-debt
+// forms on the customer detail screen underneath it.
+function CustomerStatementModal({ customer, orders, restaurant, onClose, onViewOrder }) {
+  const unpaid = orders.filter((o) => o.payment?.status !== 'paid');
+  return (
+    <Modal onClose={onClose} width={360}>
+      <div id="receipt-print" style={{ fontFamily: "'Courier New', Courier, monospace" }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 14 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16, background: `hsl(${restaurant?.hue ?? 212} 65% 95%)`, color: `hsl(${restaurant?.hue ?? 212} 55% 42%)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22, marginBottom: 10, overflow: 'hidden',
+          }}>
+            {restaurant?.logoUrl ? <img src={restaurant.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (restaurant?.name?.[0] || 'M')}
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 15, fontFamily: 'var(--font)' }}>{restaurant?.name}</div>
+          <div style={{ fontSize: 12, color: '#000', fontWeight: 800, marginTop: 6 }}>Diiwaanka Deynta · Debt Statement</div>
+          <div style={{ fontSize: 11, color: '#000', fontWeight: 700 }}>{fullDate(new Date())}</div>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--text)', borderBottom: '1px solid var(--text)', padding: '10px 0', marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{customer.name}</div>
+          {customer.phone && <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>📞 {customer.phone}</div>}
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 90px 70px', gap: 6,
+            borderBottom: '1px solid var(--text)', paddingBottom: 6, marginBottom: 6,
+            fontSize: 11, fontWeight: 900, letterSpacing: 0.4, textTransform: 'uppercase', color: '#000',
+          }}>
+            <span>Dalab · Order</span>
+            <span>Taariikh · Date</span>
+            <span style={{ textAlign: 'right' }}>Qadar · Amount</span>
+          </div>
+          {!unpaid.length && (
+            <div style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 0' }}>Deyn ma jirto · No outstanding debt.</div>
+          )}
+          {unpaid.map((o) => (
+            <button
+              key={o.id} onClick={() => onViewOrder?.(o)}
+              style={{
+                display: 'grid', gridTemplateColumns: '1fr 90px 70px', gap: 6, width: '100%', textAlign: 'left',
+                fontSize: 12.5, fontWeight: 700, padding: '4px 0', fontFamily: 'inherit', color: 'inherit',
+                border: 'none', background: 'transparent', cursor: onViewOrder ? 'pointer' : 'default',
+              }}
+            >
+              <span>#{o.number}</span>
+              <span>{fullDate(o.createdAt)}</span>
+              <span style={{ textAlign: 'right' }}>{money(o.total)}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--text)', paddingTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 15 }}>
+            <span>Total</span>
+            <span>{money(customer.balance)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+        <button className="btn-outline" onClick={onClose}>Close</button>
+        <button className="btn btn-primary" onClick={() => window.print()}>🖨 Print</button>
+      </div>
+    </Modal>
+  );
+}
+
+function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSettled }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [methods, setMethods] = useState(null);
@@ -23,6 +101,8 @@ function CustomerDetailModal({ customerId, onClose, addToast, onSettled }) {
   const [methodId, setMethodId] = useState(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showStatement, setShowStatement] = useState(false);
+  const [viewOrder, setViewOrder] = useState(null);
 
   function load() {
     api.get(`/restaurant/customers/${customerId}`).then((r) => setData(r.data)).catch((e) => setError(apiErrorMessage(e)));
@@ -114,13 +194,21 @@ function CustomerDetailModal({ customerId, onClose, addToast, onSettled }) {
           )}
 
           <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>Dalabyada deynta · Debt orders</div>
+          <div style={{ fontSize: 11, color: 'var(--muted-3)', marginBottom: 6 }}>Guji dalab si aad u aragto alaabta (magaca, qty, qiimaha) · Click an order to see its items (product, qty, price).</div>
           <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: 16 }}>
             {!data.orders.length && <div className="text-muted" style={{ fontSize: 12.5 }}>Wax dalab ah lama helin · No debt orders.</div>}
             {data.orders.map((o) => (
-              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-soft)', fontSize: 12.5 }}>
+              <button
+                key={o.id} onClick={() => setViewOrder(o)}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left',
+                  padding: '7px 4px', borderBottom: '1px solid var(--border-soft)', fontSize: 12.5,
+                  border: 'none', borderBottomWidth: '1px', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
+                }}
+              >
                 <span>#{o.number} · {timeAgo(o.createdAt)}</span>
                 <span style={{ fontWeight: 700 }}>{money(o.total)}</span>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -135,17 +223,32 @@ function CustomerDetailModal({ customerId, onClose, addToast, onSettled }) {
             ))}
           </div>
 
-          <div style={{ marginTop: 18, textAlign: 'right' }}>
+          <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button className="btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setShowStatement(true)}>
+              <Printer size={14} strokeWidth={2.25} /> Diiwaanka deynta · Statement
+            </button>
             <button className="btn-outline" onClick={onClose}>Close</button>
           </div>
         </>
+      )}
+
+      {showStatement && data && (
+        <CustomerStatementModal
+          customer={data.customer} orders={data.orders} restaurant={restaurant}
+          onClose={() => setShowStatement(false)}
+          onViewOrder={(o) => setViewOrder(o)}
+        />
+      )}
+
+      {viewOrder && (
+        <ReceiptModal order={viewOrder} restaurant={restaurant} onClose={() => setViewOrder(null)} />
       )}
     </Modal>
   );
 }
 
 export default function Customers() {
-  const { addToast } = useOutletContext();
+  const { addToast, me } = useOutletContext();
   const [customers, setCustomers] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -179,7 +282,7 @@ export default function Customers() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 20 }}>
         <div className="stat-card">
-          <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, marginBottom: 8 }}>Wadarta la leeyahay · Total owed</div>
+          <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, marginBottom: 8 }}>Total</div>
           <div style={{ fontSize: 26, fontWeight: 800 }}>{money(totalOwed)}</div>
         </div>
         <div className="stat-card">
@@ -237,7 +340,7 @@ export default function Customers() {
 
       {selectedId && (
         <CustomerDetailModal
-          customerId={selectedId} addToast={addToast}
+          customerId={selectedId} restaurant={me} addToast={addToast}
           onClose={() => setSelectedId(null)}
           onSettled={(updated) => setCustomers((prev) => {
             if (!prev) return prev;

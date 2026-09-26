@@ -69,11 +69,11 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
         <div style={{ borderTop: '1px solid var(--text)', paddingTop: 10 }}>
           {order.discount > 0 && (
             <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--muted-2)', marginBottom: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#000', marginBottom: 4 }}>
                 <span>Subtotal</span>
                 <span>${(order.total + order.discount).toFixed(2)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--danger)', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#000', marginBottom: 8 }}>
                 <span>Discount</span>
                 <span>−${order.discount.toFixed(2)}</span>
               </div>

@@ -289,7 +289,7 @@ function AssignDebtModal({ order, onClose, onAssigned, addToast }) {
   }
 
   return (
-    <Modal onClose={onClose} width={380}>
+    <Modal onClose={onClose} width={480}>
       <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Deyn u dir · Charge to customer account</div>
       <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>Order #{order.number} · ${order.total.toFixed(2)}</div>
       <label className="field-label">Macmiil · Customer *</label>
