@@ -327,7 +327,7 @@ export default function Orders() {
           <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
           <input
             className="field-input" style={{ paddingLeft: 32 }}
-            placeholder="Raadi order & product"
+            placeholder="Raadi order number ama product name"
             value={query} onChange={(e) => onQuery(e.target.value)}
           />
         </div>
