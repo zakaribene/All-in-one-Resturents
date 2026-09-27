@@ -297,6 +297,51 @@ router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), as
   res.json(payload);
 });
 
+// Corrects which wallet an already-paid order's money was attributed to — e.g. staff
+// tapped EVC at checkout when the customer actually paid via E.Dahab. Moves the order's
+// total off the old wallet's balance and onto the new one, and updates the ledger row to
+// match, so wallet balances and the Payment Methods "today" total both stay accurate.
+// Only orders collected through the normal manual-payment flow (attributeManualCollection
+// — mark-paid, settle-debt) carry the wallet reference this needs; an order settled as
+// part of a customer's whole running balance never had its money attributed to one
+// wallet in the first place, so there's nothing here to reassign.
+router.patch('/orders/:id/payment-method', requireAnyPermission(['orders', 'pos']), async (req, res) => {
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.payment?.status !== 'paid') return res.status(400).json({ error: 'Order is not marked paid' });
+  if (!order.payment?.manualMethod) return res.status(400).json({ error: 'This order has no wallet to reassign' });
+
+  const methodId = req.body?.methodId;
+  if (!methodId || !mongoose.Types.ObjectId.isValid(methodId)) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
+  const newMethod = await PaymentMethod.findOne({ _id: methodId, restaurant: req.auth.id, status: 'active' });
+  if (!newMethod) return res.status(400).json({ error: 'Hab lama helin · Wallet not found' });
+
+  if (String(order.payment.manualMethod) === String(newMethod._id)) {
+    return res.json(mapOrder(order.toObject()));
+  }
+
+  const amount = order.total;
+  await PaymentMethod.updateOne({ _id: order.payment.manualMethod, restaurant: req.auth.id }, { $inc: { balance: -amount } });
+  await PaymentMethod.updateOne({ _id: newMethod._id, restaurant: req.auth.id }, { $inc: { balance: amount } });
+  await PaymentCollection.updateMany(
+    { restaurant: req.auth.id, order: order._id },
+    { $set: { method: newMethod._id, methodName: newMethod.name } },
+  );
+
+  const oldName = order.payment.manualMethodName;
+  order.payment.manualMethod = newMethod._id;
+  order.payment.manualMethodName = newMethod.name;
+  await order.save();
+
+  logStoreActivity(req, {
+    module: 'orders', action: 'Update',
+    message: `Order #${order.number} payment method corrected: ${oldName} → ${newMethod.name}`,
+  });
+  const payload = mapOrder(order.toObject());
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json(payload);
+});
+
 // Charged to a customer's account — its total is tracked on Customer.balance too, so any
 // change to the order's total here (add/remove items, discount) has to move the balance
 // by the same delta or the two silently desync. Shared by both routes below; callers
@@ -1068,6 +1113,7 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
   order.payment.status = 'paid';
   order.payment.paidAt = new Date();
   order.payment.method = 'pay_at_table';
+  order.payment.manualMethod = method._id;
   order.payment.manualMethodName = method.name;
   order.payment.collectedByName = collector.name;
   await order.save();

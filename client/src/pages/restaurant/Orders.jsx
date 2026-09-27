@@ -107,6 +107,63 @@ function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   );
 }
 
+// Corrects which wallet an already-paid order's money was attributed to — e.g. staff
+// tapped the wrong one at checkout. See PATCH /orders/:id/payment-method.
+function EditPaymentMethodModal({ order, onClose, onUpdated, addToast }) {
+  const [methods, setMethods] = useState(null);
+  const [methodId, setMethodId] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get('/restaurant/pos/payment-options').then((r) => {
+      const m = r.data.manualMethods || [];
+      setMethods(m);
+      setMethodId(order.payment?.manualMethod || m[0]?.id || null);
+    });
+  }, [order]);
+
+  const changed = methodId && methodId !== order.payment?.manualMethod;
+
+  async function submit() {
+    if (busy || !changed) return;
+    setBusy(true);
+    try {
+      const { data } = await api.patch(`/restaurant/orders/${order.id}/payment-method`, { methodId });
+      onUpdated(data);
+      addToast({ title: 'Habka bixinta waa la beddelay · Payment method corrected', body: `#${data.number}`, tone: 'success' });
+      onClose();
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={380}>
+      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Beddel habka bixinta · Edit payment method</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>
+        Order #{order.number} · ${order.total.toFixed(2)} · Hadda: {order.payment?.manualMethodName || '—'}
+      </div>
+      {methods === null && <div className="text-muted" style={{ padding: '4px 0 16px' }}>Loading…</div>}
+      {!!methods?.length && (
+        <>
+          <label className="field-label">Habka saxda ah · Correct wallet</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {methods.map((m) => (
+              <button key={m.id} type="button" className={'chip' + (methodId === m.id ? ' active' : '')} onClick={() => setMethodId(m.id)}>{m.name}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !changed} onClick={submit}>{busy ? 'Diraya…' : 'Xaqiiji · Confirm'}</button>
+      </div>
+    </Modal>
+  );
+}
+
 // Charges an already-placed pending order to a customer's account — the "the customer
 // says they have no money" case, after the order was already sent as a normal pending
 // order rather than through POS's own "Deyn" button.
@@ -160,6 +217,7 @@ export default function Orders() {
   const [editItemsOrder, setEditItemsOrder] = useState(null);
   const [payOrder, setPayOrder] = useState(null);
   const [debtOrder, setDebtOrder] = useState(null);
+  const [editPaymentOrder, setEditPaymentOrder] = useState(null);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -222,7 +280,11 @@ export default function Orders() {
       return (
         String(o.number).includes(q) ||
         m.label.toLowerCase().includes(q) ||
-        (o.phone || '').toLowerCase().includes(q)
+        (o.phone || '').toLowerCase().includes(q) ||
+        o.items.some((it) => {
+          const name = it.name.toLowerCase();
+          return name.includes(q) || `${it.qty} ${name}`.includes(q);
+        })
       );
     });
   }, [orders, tab, query]);
@@ -265,7 +327,7 @@ export default function Orders() {
           <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
           <input
             className="field-input" style={{ paddingLeft: 32 }}
-            placeholder="Raadi order, miis, taleefan…"
+            placeholder="Raadi order & product"
             value={query} onChange={(e) => onQuery(e.target.value)}
           />
         </div>
@@ -320,6 +382,11 @@ export default function Orders() {
               </div>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
                 <button className="btn-outline btn-sm" style={{ height: 32 }} onClick={() => setReceiptOrder(o)}>View</button>
+                {isPaid(o) && o.payment?.manualMethod && (
+                  <button className="btn-outline btn-sm" style={{ height: 32 }} title="Beddel habka bixinta · Edit payment method" onClick={() => setEditPaymentOrder(o)}>
+                    <Pencil size={13} strokeWidth={2.5} /> Edit
+                  </button>
+                )}
                 {/* A debt order settles through the Customers page only — its total is
                     tracked on the customer's balance now, so editing/paying/deleting it
                     here would desync the two. The server refuses these too; hiding them
@@ -404,6 +471,13 @@ export default function Orders() {
           order={debtOrder} addToast={addToast}
           onClose={() => setDebtOrder(null)}
           onAssigned={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
+        />
+      )}
+      {editPaymentOrder && (
+        <EditPaymentMethodModal
+          order={editPaymentOrder} addToast={addToast}
+          onClose={() => setEditPaymentOrder(null)}
+          onUpdated={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
         />
       )}
     </div>
