@@ -1042,6 +1042,69 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
   });
 });
 
+// Settles ONE specific debt order by itself, instead of paying down the customer's whole
+// running balance — e.g. the customer wants to clear just today's order and keep the
+// rest open for later. Reduces the balance by exactly this order's total (not the whole
+// balance) and marks only this order paid, unlike /customers/:id/payments above, which
+// only flips orders to paid once the entire balance clears to zero.
+router.post('/orders/:id/settle-debt', requirePermission('customers'), async (req, res) => {
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (!order.debtor) return res.status(400).json({ error: 'This order is not charged to a customer account' });
+  if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Already paid' });
+
+  const methodId = req.body?.methodId;
+  if (!methodId || !mongoose.Types.ObjectId.isValid(methodId)) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
+  const method = await PaymentMethod.findOne({ _id: methodId, restaurant: req.auth.id, status: 'active' });
+  if (!method) return res.status(400).json({ error: 'Hab lama helin · Wallet not found' });
+  const note = String(req.body?.note || '').trim().slice(0, 200);
+
+  const customer = await Customer.findOne({ _id: order.debtor, restaurant: req.auth.id });
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+  const collector = await resolveCollector(req);
+  const amount = order.total;
+
+  order.payment.status = 'paid';
+  order.payment.paidAt = new Date();
+  order.payment.method = 'pay_at_table';
+  order.payment.manualMethodName = method.name;
+  order.payment.collectedByName = collector.name;
+  await order.save();
+
+  customer.balance = Math.round((customer.balance - amount) * 100) / 100;
+  await customer.save();
+
+  const credited = await PaymentMethod.findOneAndUpdate(
+    { _id: method._id, restaurant: req.auth.id },
+    { $inc: { balance: amount } },
+    { new: true },
+  );
+  const payment = await DebtPayment.create({
+    restaurant: req.auth.id, customer: customer._id, amount,
+    method: method._id, methodName: method.name, staffName: collector.name,
+    note: note || `Order #${order.number}`,
+  });
+  await PaymentCollection.create({
+    restaurant: req.auth.id, method: method._id, methodName: method.name,
+    order: order._id, orderNumber: order.number, amount, staff: collector.id, staffName: collector.name,
+  });
+
+  logStoreActivity(req, {
+    module: 'customers', action: 'Update',
+    message: `${customer.name} paid off order #${order.number} (${fmtMoney(amount)}, ${method.name})`,
+  });
+
+  const payload = mapOrder({ ...order.toObject(), debtor: customer });
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json({
+    customer: mapCustomer(customer),
+    order: payload,
+    payment: mapDebtPayment(payment),
+    balance: { [String(method._id)]: Math.round((credited?.balance || 0) * 100) / 100 },
+  });
+});
+
 // ---- Expenses (money out, paid from a wallet) ----
 router.get('/expense-categories', requirePermission('expenses'), async (req, res) => {
   const cats = await ExpenseCategory.find({ restaurant: req.auth.id }).sort({ name: 1 }).lean();

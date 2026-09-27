@@ -94,6 +94,70 @@ function CustomerStatementModal({ customer, orders, restaurant, onClose, onViewO
   );
 }
 
+// Pays off ONE specific debt order by itself — e.g. the customer wants to clear just
+// this one and keep the rest open — instead of paying down the customer's whole running
+// balance. See POST /orders/:id/settle-debt.
+function SettleDebtOrderModal({ order, onClose, onSettled, addToast }) {
+  const [methods, setMethods] = useState(null);
+  const [methodId, setMethodId] = useState(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get('/restaurant/pos/payment-options').then((r) => {
+      const m = r.data.manualMethods || [];
+      setMethods(m);
+      setMethodId((prev) => prev || m[0]?.id || null);
+    });
+  }, []);
+
+  async function submit() {
+    if (!methodId || busy) return;
+    setBusy(true);
+    try {
+      await api.post(`/restaurant/orders/${order.id}/settle-debt`, { methodId, note: note.trim() });
+      addToast({ title: 'Dalabka waa la bixiyay · Order paid off', body: `#${order.number} · ${money(order.total)}`, tone: 'success' });
+      await onSettled();
+      onClose();
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={380}>
+      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Bixi dalabkan · Pay this order</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>Order #{order.number} · {money(order.total)}</div>
+      {methods === null && <div className="text-muted" style={{ padding: '4px 0 16px' }}>Loading…</div>}
+      {!!methods?.length && (
+        <>
+          <label className="field-label">Halka lacagtu ku dhacday · Received into</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {methods.map((m) => (
+              <button key={m.id} type="button" className={'chip' + (methodId === m.id ? ' active' : '')} onClick={() => setMethodId(m.id)}>{m.name}</button>
+            ))}
+          </div>
+        </>
+      )}
+      {methods !== null && !methods.length && (
+        <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 16 }}>
+          Weli hab lacag-bixin ma jiro · No wallet yet — create one on the Payment Methods page first.
+        </div>
+      )}
+      <input
+        className="field-input" style={{ marginBottom: 16 }} placeholder="Faallo (ikhtiyaari) · Note (optional)"
+        value={note} onChange={(e) => setNote(e.target.value)}
+      />
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !methodId} onClick={submit}>{busy ? 'Diraya…' : 'Xaqiiji · Confirm'}</button>
+      </div>
+    </Modal>
+  );
+}
+
 function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSettled }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -106,6 +170,7 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
   const [viewOrder, setViewOrder] = useState(null);
   const [addItemsOrder, setAddItemsOrder] = useState(null);
   const [editItemsOrder, setEditItemsOrder] = useState(null);
+  const [settleOrder, setSettleOrder] = useState(null);
   const canDebt = restaurant?.role !== 'staff' || restaurant?.permissions?.includes('pos_debt');
   const canDiscount = restaurant?.role !== 'staff' || restaurant?.permissions?.includes('pos_discount');
 
@@ -131,6 +196,7 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
   }, []);
 
   const balance = data?.customer.balance || 0;
+  const unpaidOrders = useMemo(() => (data?.orders || []).filter((o) => o.payment?.status !== 'paid'), [data]);
   const amountNum = Math.round((Number(amount) || 0) * 100) / 100;
   const canSettle = amountNum > 0 && amountNum <= balance + 0.001 && methodId;
 
@@ -210,9 +276,13 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
           <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>Dalabyada deynta · Debt orders</div>
           <div style={{ fontSize: 11, color: 'var(--muted-3)', marginBottom: 6 }}>Guji dalab si aad u aragto alaabta (magaca, qty, qiimaha) · Click an order to see its items (product, qty, price).</div>
           <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
-            {!data.orders.length && <div className="text-muted" style={{ fontSize: 12.5 }}>Wax dalab ah lama helin · No debt orders.</div>}
-            {data.orders.map((o) => {
-              const editable = canDebt && o.payment?.status !== 'paid';
+            {/* Once an order is marked paid — balance cleared, see /customers/:id/payments —
+                it's a settled financial record, not outstanding debt anymore, so it drops
+                off this list instead of sitting here looking unpaid. It's still visible in
+                Payment history below and via that order's own receipt. */}
+            {!unpaidOrders.length && <div className="text-muted" style={{ fontSize: 12.5 }}>Wax dalab ah lama helin · No debt orders.</div>}
+            {unpaidOrders.map((o) => {
+              const editable = canDebt;
               return (
                 <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border-soft)' }}>
                   <button
@@ -226,6 +296,10 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
                     <span>#{o.number} · {timeAgo(o.createdAt)}</span>
                     <span style={{ fontWeight: 700 }}>{money(o.total)}</span>
                   </button>
+                  <button
+                    title="Bixi dalabkan · Pay this order" onClick={() => setSettleOrder(o)}
+                    style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, border: '1px solid var(--success)', background: 'var(--success-bg)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  ><Wallet size={12} strokeWidth={2.5} /></button>
                   {editable && (
                     <>
                       <button
@@ -288,6 +362,14 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
           order={editItemsOrder} addToast={addToast} canDiscount={canDiscount}
           onClose={() => setEditItemsOrder(null)}
           onUpdated={reloadAfterOrderEdit}
+        />
+      )}
+
+      {settleOrder && (
+        <SettleDebtOrderModal
+          order={settleOrder} addToast={addToast}
+          onClose={() => setSettleOrder(null)}
+          onSettled={reloadAfterOrderEdit}
         />
       )}
     </Modal>
