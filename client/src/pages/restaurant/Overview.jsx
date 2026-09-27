@@ -49,11 +49,10 @@ export default function Overview() {
   const isPaid = (o) => o.payment?.status === 'paid';
   // "Orders today" (order volume) is about when orders were placed — createdAt.
   const todayOrders = orders.filter((o) => isToday(o.createdAt));
-  // Revenue is about money actually collected, dated by when it was actually paid
-  // (payment.paidAt) — not when the order was first placed. Same field the wallet
-  // "Today" total and the Paid-filtered Sales Report use, so all three always agree.
-  const todayRevenue = orders.filter((o) => isPaid(o) && isToday(o.payment?.paidAt)).reduce((a, o) => a + o.total, 0);
-  // A pending order has no paidAt yet, so "today" for it can only mean "placed today".
+  // Revenue is dated by when the order was placed (createdAt), same as Orders today and
+  // the Sales Report — an order rung in tonight still counts as tonight's revenue even if
+  // it doesn't get marked paid until after midnight.
+  const todayRevenue = orders.filter((o) => isPaid(o) && isToday(o.createdAt)).reduce((a, o) => a + o.total, 0);
   const todayPending = orders.filter((o) => !isPaid(o) && isToday(o.createdAt)).reduce((a, o) => a + o.total, 0);
   const activeProducts = products.filter((p) => p.status === 'active').length;
 

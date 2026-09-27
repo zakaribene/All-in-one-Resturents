@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Minus, Wallet, Pencil, Receipt } from 'lucide-react';
+import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Wallet, Pencil, Receipt } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
 import Modal from '../../components/Modal';
 import CustomerPicker from '../../components/CustomerPicker';
+import { AddItemsModal, EditItemsModal } from '../../components/OrderItemsModals';
 
 function channelMeta(channel, tableLabel) {
   if (channel === 'online') return { label: 'Online', Icon: Globe, bg: 'var(--purple-bg)', fg: 'var(--purple)' };
@@ -54,162 +55,6 @@ function formatDateTime(date) {
 function isPosOrder(o) { return o.channel === 'pos'; }
 function isPaid(o) { return o.payment?.status === 'paid'; }
 function isDebt(o) { return !!o.debtorId; }
-
-function AddItemsModal({ order, onClose, onAdded, addToast }) {
-  const [products, setProducts] = useState(null);
-  const [query, setQuery] = useState('');
-  const [cart, setCart] = useState({});
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api.get('/restaurant/products').then((r) => setProducts(r.data.filter((p) => p.status === 'active')));
-  }, []);
-
-  const visible = useMemo(() => {
-    if (!products) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.en.toLowerCase().includes(q) || p.so.toLowerCase().includes(q));
-  }, [products, query]);
-
-  const lines = useMemo(() => {
-    if (!products) return [];
-    return Object.entries(cart).map(([pid, qty]) => ({ product: products.find((p) => p.id === pid), qty })).filter((l) => l.product);
-  }, [cart, products]);
-  const addTotal = lines.reduce((a, l) => a + l.product.price * l.qty, 0);
-
-  function inc(pid) { setCart((c) => ({ ...c, [pid]: (c[pid] || 0) + 1 })); }
-  function dec(pid) {
-    setCart((c) => {
-      const next = { ...c };
-      if (!next[pid]) return c;
-      next[pid] -= 1;
-      if (next[pid] <= 0) delete next[pid];
-      return next;
-    });
-  }
-
-  async function submit() {
-    if (!lines.length || busy) return;
-    setBusy(true);
-    try {
-      const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty }));
-      const { data } = await api.post(`/restaurant/orders/${order.id}/items`, { items });
-      onAdded(data);
-      addToast({ title: 'Waa la daray · Items added', body: `#${data.number}`, tone: 'success' });
-      onClose();
-    } catch (err) {
-      addToast({ title: 'Way fashilantay · Failed to add items', body: apiErrorMessage(err), tone: 'error' });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal onClose={onClose} width={480}>
-      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Ku dar alaab · Add items</div>
-      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 14 }}>Order #{order.number}</div>
-      <div style={{ position: 'relative', marginBottom: 12 }}>
-        <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-        <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi cunto…" value={query} onChange={(e) => setQuery(e.target.value)} />
-      </div>
-      {!products && <div className="text-muted" style={{ padding: 20, textAlign: 'center' }}>Loading…</div>}
-      <div style={{ maxHeight: 260, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 14 }}>
-        {visible.map((p) => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid var(--border-soft)' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{p.en}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>${p.price.toFixed(2)}</div>
-            </div>
-            <button onClick={() => dec(p.id)} disabled={!cart[p.id]} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={12} /></button>
-            <span className="mono" style={{ minWidth: 16, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>{cart[p.id] || 0}</span>
-            <button onClick={() => inc(p.id)} style={{ width: 26, height: 26, borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={12} /></button>
-          </div>
-        ))}
-        {products && !visible.length && <div className="text-muted" style={{ padding: 20, textAlign: 'center' }}>Wax lama helin · No products.</div>}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontWeight: 800 }}>{lines.length ? `+ $${addTotal.toFixed(2)}` : ''}</div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
-          <button className="btn btn-primary" disabled={!lines.length || busy} onClick={submit}>{busy ? 'Diraya…' : 'Ku dar · Add'}</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// Edits (reduces or removes) the CURRENT items on a still-pending order — the
-// counterpart to AddItemsModal above, which only ever adds. Getting a line to 0 drops
-// it from the list; the order must end up with at least one item (use Delete on the
-// whole order for "the customer doesn't want any of it" — the backend enforces this too).
-function EditItemsModal({ order, onClose, onUpdated, addToast }) {
-  const [items, setItems] = useState(() => order.items.map((it) => ({ ...it })));
-  const [busy, setBusy] = useState(false);
-
-  function setQty(i, qty) {
-    setItems((prev) => {
-      const next = [...prev];
-      if (qty <= 0) { next.splice(i, 1); return next; }
-      next[i] = { ...next[i], qty };
-      return next;
-    });
-  }
-
-  const total = items.reduce((a, it) => a + it.price * it.qty, 0) - (order.discount || 0);
-  const changed = items.length !== order.items.length || items.some((it, i) => it.qty !== order.items[i]?.qty);
-
-  async function submit() {
-    if (!items.length || busy || !changed) return;
-    setBusy(true);
-    try {
-      const { data } = await api.patch(`/restaurant/orders/${order.id}/items`, {
-        items: items.map(({ name, qty, price }) => ({ name, qty, price })),
-      });
-      onUpdated(data);
-      addToast({ title: 'Dalabka waa la beddelay · Order updated', body: `#${data.number}`, tone: 'success' });
-      onClose();
-    } catch (err) {
-      addToast({ title: 'Way fashilantay · Failed to update', body: apiErrorMessage(err), tone: 'error' });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal onClose={onClose} width={440}>
-      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Wax ka beddel dalabka · Edit order</div>
-      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 14 }}>Order #{order.number}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 14 }}>
-        {items.map((it, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid var(--border-soft)' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{it.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>${it.price.toFixed(2)} · ${(it.price * it.qty).toFixed(2)}</div>
-            </div>
-            <button onClick={() => setQty(i, it.qty - 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={12} /></button>
-            <span className="mono" style={{ minWidth: 16, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>{it.qty}</span>
-            <button onClick={() => setQty(i, it.qty + 1)} style={{ width: 26, height: 26, borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={12} /></button>
-            <button onClick={() => setQty(i, 0)} title="Ka saar · Remove" style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash2 size={12} /></button>
-          </div>
-        ))}
-        {!items.length && (
-          <div style={{ padding: '16px 4px', fontSize: 12.5, color: 'var(--danger)' }}>
-            Dalabku waa in uu haystaa ugu yaraan hal alaab — haddii aadan waxba rabin, Delete isticmaal ·
-            An order needs at least one item — use Delete on the whole order if none should remain.
-          </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontWeight: 800 }}>${total.toFixed(2)}</div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
-          <button className="btn btn-primary" disabled={!items.length || busy || !changed} onClick={submit}>{busy ? 'Keydinaya…' : 'Keydi · Save'}</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   const [methods, setMethods] = useState(null);
@@ -308,6 +153,7 @@ export default function Orders() {
   const { me, soundOn, setSoundOn, addToast, confirm } = useOutletContext();
   const canDelete = me?.role !== 'staff' || me?.permissions?.includes('orders_delete');
   const canDebt = me?.role !== 'staff' || me?.permissions?.includes('pos_debt');
+  const canDiscount = me?.role !== 'staff' || me?.permissions?.includes('pos_discount');
   const [orders, setOrders] = useState([]);
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [addItemsOrder, setAddItemsOrder] = useState(null);
@@ -541,7 +387,7 @@ export default function Orders() {
       )}
       {editItemsOrder && (
         <EditItemsModal
-          order={editItemsOrder} addToast={addToast}
+          order={editItemsOrder} addToast={addToast} canDiscount={canDiscount}
           onClose={() => setEditItemsOrder(null)}
           onUpdated={(o) => setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)))}
         />

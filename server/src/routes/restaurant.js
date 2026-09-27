@@ -297,8 +297,25 @@ router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), as
   res.json(payload);
 });
 
+// Charged to a customer's account — its total is tracked on Customer.balance too, so any
+// change to the order's total here (add/remove items, discount) has to move the balance
+// by the same delta or the two silently desync. Shared by both routes below; callers
+// check pos_debt permission themselves before touching the order, since the permission
+// check has to happen before anything gets mutated, not after.
+async function syncDebtorBalance(req, order, oldTotal, newTotal) {
+  if (!order.debtor) return;
+  const delta = Math.round((newTotal - oldTotal) * 100) / 100;
+  if (delta === 0) return;
+  const customer = await Customer.findOne({ _id: order.debtor, restaurant: req.auth.id });
+  if (customer) {
+    customer.balance = Math.round((customer.balance + delta) * 100) / 100;
+    await customer.save();
+  }
+}
+
 // Lets a waiter add extra items to a still-pending (unpaid) POS order — e.g.
-// the customer orders more before the bill is settled.
+// the customer orders more before the bill is settled. Works on debt orders too (see
+// syncDebtorBalance above).
 router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async (req, res) => {
   const { items } = req.body || {};
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'No items provided' });
@@ -306,6 +323,10 @@ router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async 
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be edited here' });
   if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+  if (order.debtor) {
+    const canDebt = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_debt');
+    if (!canDebt) return res.status(403).json({ error: 'You are not allowed to edit orders charged to a customer account · Fasax kuma lihid' });
+  }
 
   const products = await Product.find({ _id: { $in: items.map(i => i.productId) }, restaurant: req.auth.id, status: 'active' }).lean();
   const productMap = new Map(products.map(p => [String(p._id), p]));
@@ -322,9 +343,11 @@ router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async 
   }
   if (!added.length) return res.status(400).json({ error: 'No valid items' });
 
+  const oldTotal = order.total;
   const subtotal = order.items.reduce((a, it) => a + it.price * it.qty, 0);
   order.total = Math.round((subtotal - (order.discount || 0)) * 100) / 100;
   await order.save();
+  await syncDebtorBalance(req, order, oldTotal, order.total);
   await Product.bulkWrite(added.map(a => ({
     updateOne: { filter: { _id: a.id }, update: { $inc: { sold: a.qty } } },
   })));
@@ -335,23 +358,24 @@ router.post('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async 
   res.json(payload);
 });
 
-// Lets a waiter reduce/remove items on a still-pending (unpaid) POS order — e.g. the
-// customer decides they don't want one of the things they ordered after all. Takes the
-// full replacement item list (the client already has it in hand) rather than a delta,
-// so removing/reducing a line is just "send the list back without it" — same shape the
-// client already renders. Once paid, an order is a financial record and this (like
-// delete, below) refuses to touch it.
+// Lets a waiter reduce/remove items, and adjust the discount, on a still-pending (unpaid)
+// POS order — e.g. the customer decides they don't want one of the things they ordered
+// after all. Takes the full replacement item list (the client already has it in hand)
+// rather than a delta, so removing/reducing a line is just "send the list back without
+// it" — same shape the client already renders. Once paid, an order is a financial record
+// and this (like delete, below) refuses to touch it. Works on debt orders too (see
+// syncDebtorBalance above).
 router.patch('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async (req, res) => {
-  const { items } = req.body || {};
+  const { items, discount } = req.body || {};
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
   const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be edited here' });
   if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Order already paid — it can no longer be edited' });
-  // Charged to a customer's account — its total is now tracked on Customer.balance, so
-  // changing the order's total here would silently desync the two. Locked the same way
-  // a paid order is.
-  if (order.debtor) return res.status(400).json({ error: 'This order is charged to a customer account — it can no longer be edited' });
+  if (order.debtor) {
+    const canDebt = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_debt');
+    if (!canDebt) return res.status(403).json({ error: 'You are not allowed to edit orders charged to a customer account · Fasax kuma lihid' });
+  }
 
   const cleanItems = items
     .map((it) => ({
@@ -364,10 +388,23 @@ router.patch('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async
     return res.status(400).json({ error: 'An order must have at least one item — delete the order instead if none should remain' });
   }
 
-  order.items = cleanItems;
   const subtotal = cleanItems.reduce((a, it) => a + it.price * it.qty, 0);
-  order.total = Math.round((subtotal - (order.discount || 0)) * 100) / 100;
+  let discountAmount = order.discount || 0;
+  if (discount !== undefined) {
+    const requested = Math.min(Math.max(0, Math.round((Number(discount) || 0) * 100) / 100), subtotal);
+    if (requested !== discountAmount) {
+      const canDiscount = req.auth.role === 'restaurant' || req.auth.permissions?.includes('pos_discount');
+      if (!canDiscount) return res.status(403).json({ error: 'You are not allowed to apply discounts · Fasax kuma lihid' });
+      discountAmount = requested;
+    }
+  }
+
+  const oldTotal = order.total;
+  order.items = cleanItems;
+  order.discount = discountAmount;
+  order.total = Math.round((subtotal - discountAmount) * 100) / 100;
   await order.save();
+  await syncDebtorBalance(req, order, oldTotal, order.total);
 
   logStoreActivity(req, { module: 'orders', action: 'Update', message: `Order #${order.number} items edited` });
   const payload = mapOrder(order.toObject());
@@ -1132,18 +1169,20 @@ router.delete('/expenses/:id', requirePermission('expenses'), async (req, res) =
 // ---- Reports (Sales + Expense, filterable, Excel / PDF export) ----
 const CHANNEL_LABEL = { table: 'Table', takeaway: 'Takeaway', online: 'Online', pos: 'POS' };
 
-// No 'Z' suffix here on purpose — that would anchor the boundary to UTC midnight,
-// 3 hours off from actual Mogadishu midnight (the server's own local timezone, which is
-// what "today" means everywhere else in the app: the wallet Today total, Revenue today,
-// the <input type="date"> the admin picked this range from). Letting the Date
-// constructor parse the plain "YYYY-MM-DDTHH:mm:ss" string in the server's local
-// timezone keeps this boundary consistent with those.
+// Anchored to a hardcoded +03:00 (Africa/Mogadishu, no DST) instead of relying on the
+// server process's own local timezone — that used to work only by accident, when the
+// host happened to be set to Mogadishu time. The moment the server runs anywhere else
+// (most hosts default to UTC), "today" here silently drifts up to 3 hours from what the
+// wallet Today total and Revenue today mean (see isToday() in Overview.jsx, which uses
+// the *browser's* local time — Mogadishu, for this app's actual users), and a paid order
+// near midnight starts falling on the wrong side of the boundary in one place but not
+// the other. Explicit offset makes the boundary correct regardless of host timezone.
 function reportRange(q) {
   const from = String(q.from || '').slice(0, 10);
   const to = String(q.to || '').slice(0, 10);
   const range = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) range.$gte = new Date(from + 'T00:00:00.000');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) range.$lte = new Date(to + 'T23:59:59.999');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) range.$gte = new Date(from + 'T00:00:00.000+03:00');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) range.$lte = new Date(to + 'T23:59:59.999+03:00');
   return { from, to, range: (range.$gte || range.$lte) ? range : null };
 }
 
@@ -1174,22 +1213,12 @@ async function buildSalesSpec(req) {
   const q = req.query || {};
   const { from, to, range } = reportRange(q);
   const filter = { restaurant: req.auth.id };
-  // Each order is matched against the date range by whichever date is actually
-  // meaningful for it: a paid order by payment.paidAt (when the money landed — the same
-  // field Revenue-today and the wallet "Today" total use), a still-pending order by
-  // createdAt (it has no paidAt yet). This $or applies regardless of the Status filter
-  // below, so filtering to a date always surfaces every order relevant to that date —
-  // paid ones by when they were paid, pending ones by when they were placed — instead of
-  // silently dropping a paid order from "today" just because it happened to be *placed*
-  // the evening before and paid after midnight. (When Status=Paid/Pending narrows things
-  // further below, the non-matching $or branch becomes self-contradictory and drops out
-  // on its own — no special-casing needed.)
-  if (range) {
-    filter.$or = [
-      { 'payment.status': 'paid', 'payment.paidAt': range },
-      { 'payment.status': { $ne: 'paid' }, createdAt: range },
-    ];
-  }
+  // Every order is matched against the date range by when it was placed (createdAt),
+  // regardless of when — or whether — it's since been paid. An order rung in at 11:45pm
+  // and settled after midnight still belongs to the day it was actually sold, matching
+  // the receipt the customer got and what "today's orders" means everywhere else in the
+  // app (Orders today, Revenue today).
+  if (range) filter.createdAt = range;
   if (q.orderId && /^\d+$/.test(String(q.orderId).trim())) filter.number = Number(String(q.orderId).trim());
   if (q.channel && q.channel !== 'all') filter.channel = q.channel;
   if (q.status === 'paid') filter['payment.status'] = 'paid';
@@ -1208,10 +1237,7 @@ async function buildSalesSpec(req) {
     }
     return {
       number: o.number,
-      // Show whichever date actually placed this row in the selected range — a paid
-      // order's paid date, a pending order's created date — so the column never looks
-      // like it disagrees with why the row is here.
-      createdAt: o.payment?.status === 'paid' && o.payment?.paidAt ? o.payment.paidAt : o.createdAt,
+      createdAt: o.createdAt,
       channel: CHANNEL_LABEL[o.channel] || o.channel,
       itemsCount,
       discount: o.discount || 0,
@@ -1692,8 +1718,7 @@ const STORE_ACTIVITY_COLUMNS = [
   { header: 'Description', headerSo: 'Faahfaahin', key: 'description', w: 3, width: 44, wrap: true },
 ];
 
-// Same local-boundary reasoning as reportRange() above — no 'Z', so "today" here means
-// the same thing it means in the wallet Today total and Revenue today.
+// Same fixed +03:00 boundary reasoning as reportRange() above.
 function activityLogFilter(req) {
   const q = req.query || {};
   const filter = { restaurant: req.auth.id };
@@ -1701,8 +1726,8 @@ function activityLogFilter(req) {
   const from = String(q.from || '').slice(0, 10);
   const to = String(q.to || '').slice(0, 10);
   const createdAt = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000+03:00');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999+03:00');
   if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
   return { filter, from, to };
 }

@@ -28,12 +28,22 @@ function hslToHex(h, s = 62, l = 45) {
 }
 
 const fmtMoney = (n) => '$' + Number(n || 0).toFixed(2);
-// Local (server timezone — Africa/Mogadishu in production), not UTC: an order paid at
-// 00:13 local reads back as "today" in the export, matching every other "today" figure
-// in the app, instead of the UTC calendar day (3 hours behind) an ISO string would give.
+// Fixed +03:00 (Africa/Mogadishu), not the server process's ambient timezone: an order
+// paid at 00:13 local should read back as "today" in the export, matching every other
+// "today" figure in the app. Shifting by the offset and reading back with the UTC
+// getters keeps this correct no matter what timezone the host itself happens to run in
+// (most default to UTC), instead of silently depending on the server being set to
+// Mogadishu time.
+const MOGADISHU_OFFSET_MS = 3 * 60 * 60 * 1000;
 const pad2 = (n) => String(n).padStart(2, '0');
-const fmtDate = (d) => { const x = new Date(d); return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`; };
-const fmtDateTime = (d) => { const x = new Date(d); return `${fmtDate(x)} ${pad2(x.getHours())}:${pad2(x.getMinutes())}`; };
+const fmtDate = (d) => {
+  const x = new Date(new Date(d).getTime() + MOGADISHU_OFFSET_MS);
+  return `${x.getUTCFullYear()}-${pad2(x.getUTCMonth() + 1)}-${pad2(x.getUTCDate())}`;
+};
+const fmtDateTime = (d) => {
+  const x = new Date(new Date(d).getTime() + MOGADISHU_OFFSET_MS);
+  return `${fmtDate(d)} ${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}`;
+};
 
 function cellText(row, col) {
   const v = row[col.key];

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, HandCoins, Phone, Receipt, Wallet, Printer } from 'lucide-react';
+import { Search, HandCoins, Phone, Receipt, Wallet, Printer, Plus, Pencil } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 import ReceiptModal from '../../components/ReceiptModal';
+import { AddItemsModal, EditItemsModal } from '../../components/OrderItemsModals';
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 
@@ -103,9 +104,22 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
   const [busy, setBusy] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [viewOrder, setViewOrder] = useState(null);
+  const [addItemsOrder, setAddItemsOrder] = useState(null);
+  const [editItemsOrder, setEditItemsOrder] = useState(null);
+  const canDebt = restaurant?.role !== 'staff' || restaurant?.permissions?.includes('pos_debt');
+  const canDiscount = restaurant?.role !== 'staff' || restaurant?.permissions?.includes('pos_discount');
 
   function load() {
     api.get(`/restaurant/customers/${customerId}`).then((r) => setData(r.data)).catch((e) => setError(apiErrorMessage(e)));
+  }
+
+  // Adding/removing items or changing the discount on a debt order also moves the
+  // customer's balance server-side (see /orders/:id/items) — refetch here so this modal
+  // and the parent list both pick up the new number, same as after a settlement.
+  async function reloadAfterOrderEdit() {
+    const { data: fresh } = await api.get(`/restaurant/customers/${customerId}`);
+    setData(fresh);
+    onSettled?.(fresh.customer);
   }
   useEffect(load, [customerId]);
   useEffect(() => {
@@ -195,21 +209,38 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
 
           <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>Dalabyada deynta · Debt orders</div>
           <div style={{ fontSize: 11, color: 'var(--muted-3)', marginBottom: 6 }}>Guji dalab si aad u aragto alaabta (magaca, qty, qiimaha) · Click an order to see its items (product, qty, price).</div>
-          <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: 16 }}>
+          <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
             {!data.orders.length && <div className="text-muted" style={{ fontSize: 12.5 }}>Wax dalab ah lama helin · No debt orders.</div>}
-            {data.orders.map((o) => (
-              <button
-                key={o.id} onClick={() => setViewOrder(o)}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left',
-                  padding: '7px 4px', borderBottom: '1px solid var(--border-soft)', fontSize: 12.5,
-                  border: 'none', borderBottomWidth: '1px', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
-                }}
-              >
-                <span>#{o.number} · {timeAgo(o.createdAt)}</span>
-                <span style={{ fontWeight: 700 }}>{money(o.total)}</span>
-              </button>
-            ))}
+            {data.orders.map((o) => {
+              const editable = canDebt && o.payment?.status !== 'paid';
+              return (
+                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border-soft)' }}>
+                  <button
+                    onClick={() => setViewOrder(o)}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', flex: 1, minWidth: 0, textAlign: 'left',
+                      padding: '7px 4px', fontSize: 12.5,
+                      border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
+                    }}
+                  >
+                    <span>#{o.number} · {timeAgo(o.createdAt)}</span>
+                    <span style={{ fontWeight: 700 }}>{money(o.total)}</span>
+                  </button>
+                  {editable && (
+                    <>
+                      <button
+                        title="Ku dar alaab · Add items" onClick={() => setAddItemsOrder(o)}
+                        style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                      ><Plus size={13} strokeWidth={2.5} /></button>
+                      <button
+                        title="Wax ka beddel · Edit items & discount" onClick={() => setEditItemsOrder(o)}
+                        style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                      ><Pencil size={12} strokeWidth={2.5} /></button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>Taariikhda lacag-bixinta · Payment history</div>
@@ -242,6 +273,22 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
 
       {viewOrder && (
         <ReceiptModal order={viewOrder} restaurant={restaurant} onClose={() => setViewOrder(null)} />
+      )}
+
+      {addItemsOrder && (
+        <AddItemsModal
+          order={addItemsOrder} addToast={addToast}
+          onClose={() => setAddItemsOrder(null)}
+          onAdded={reloadAfterOrderEdit}
+        />
+      )}
+
+      {editItemsOrder && (
+        <EditItemsModal
+          order={editItemsOrder} addToast={addToast} canDiscount={canDiscount}
+          onClose={() => setEditItemsOrder(null)}
+          onUpdated={reloadAfterOrderEdit}
+        />
       )}
     </Modal>
   );

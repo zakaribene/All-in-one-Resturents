@@ -548,9 +548,8 @@ const ACTIVITY_COLUMNS = [
 ];
 
 // Shared by the JSON list and both export formats so filters never drift out of sync.
-// No 'Z' suffix — see the matching comment on reportRange()/activityLogFilter() in
-// restaurant.js. Keeps "today" here meaning the same thing it means everywhere else
-// (server-local, Africa/Mogadishu in production), not UTC.
+// Anchored to a hardcoded +03:00 (Africa/Mogadishu) rather than the server process's
+// ambient timezone — see the matching comment on reportRange() in restaurant.js.
 async function buildActivityLogQuery(req) {
   const q = req.query || {};
   const filter = {};
@@ -559,8 +558,8 @@ async function buildActivityLogQuery(req) {
   const from = String(q.from || '').slice(0, 10);
   const to = String(q.to || '').slice(0, 10);
   const createdAt = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000+03:00');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999+03:00');
   if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
   return { filter, from, to };
 }
