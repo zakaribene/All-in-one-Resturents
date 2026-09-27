@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { ClipboardList, Wallet, UtensilsCrossed, Crown, Globe, ShoppingBag, ShoppingCart, MapPin } from 'lucide-react';
+import { useOutletContext, useNavigate } from 'react-router-dom';
+import { ClipboardList, Wallet, UtensilsCrossed, HandCoins, Globe, ShoppingBag, ShoppingCart, MapPin } from 'lucide-react';
 import { api } from '../../lib/api';
 
 function channelMeta(channel, tableLabel) {
@@ -31,14 +31,17 @@ const money = (n) => '$' + Number(n || 0).toFixed(2);
 
 export default function Overview() {
   const { me } = useOutletContext();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState(null);
   const [products, setProducts] = useState(null);
   const [methods, setMethods] = useState([]);
+  const [debtors, setDebtors] = useState([]);
 
   useEffect(() => {
     api.get('/restaurant/orders').then((r) => setOrders(r.data));
     api.get('/restaurant/products').then((r) => setProducts(r.data));
     api.get('/restaurant/payment-methods').then((r) => setMethods(r.data)).catch(() => setMethods([]));
+    api.get('/restaurant/customers', { params: { owing: 1 } }).then((r) => setDebtors(r.data)).catch(() => setDebtors([]));
   }, []);
 
   if (!orders || !products) return <div className="text-muted">Loading…</div>;
@@ -63,12 +66,13 @@ export default function Overview() {
   };
   const maxCount = Math.max(1, counts.new, counts.preparing, counts.done);
   const totalOrders = counts.new + counts.preparing + counts.done;
+  const totalDebt = debtors.reduce((a, c) => a + c.balance, 0);
 
   const stats = [
-    { so: 'Dalabyada maanta', en: 'Orders today', val: String(todayOrders.length), sub: `${orders.length} total · guud ahaan`, Icon: ClipboardList, tone: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))' },
-    { so: 'Dakhliga maanta', en: 'Revenue today', val: `$${todayRevenue.toFixed(2)}`, sub: todayPending > 0 ? `$${todayPending.toFixed(2)} sugaya lacag · pending` : 'La bixiyay oo kaliya · Paid only', Icon: Wallet, tone: 'var(--success)', bg: 'var(--success-bg)' },
-    { so: 'Cuntooyinka firfircoon', en: 'Active products', val: String(activeProducts), sub: `${products.length} total`, Icon: UtensilsCrossed, tone: 'var(--purple)', bg: 'var(--purple-bg)' },
-    { so: 'Qorshaha', en: 'Plan', val: me?.plan || '—', sub: me?.city || '', Icon: Crown, tone: 'var(--warning-fg)', bg: 'var(--warning-bg)' },
+    { so: 'Dalabyada maanta', en: 'Orders today', val: String(todayOrders.length), sub: `${orders.length} total · guud ahaan`, Icon: ClipboardList, tone: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))', onClick: () => navigate('/dashboard/orders') },
+    { so: 'Dakhliga maanta', en: 'Revenue today', val: `$${todayRevenue.toFixed(2)}`, sub: todayPending > 0 ? `$${todayPending.toFixed(2)} sugaya lacag · pending` : 'La bixiyay oo kaliya · Paid only', Icon: Wallet, tone: 'var(--success)', bg: 'var(--success-bg)', onClick: () => navigate('/dashboard/reports') },
+    { so: 'Cuntooyinka firfircoon', en: 'Active products', val: String(activeProducts), sub: `${products.length} total`, Icon: UtensilsCrossed, tone: 'var(--purple)', bg: 'var(--purple-bg)', onClick: () => navigate('/dashboard/products') },
+    { so: 'Deynta la sugayo', en: 'Debt outstanding', val: `$${totalDebt.toFixed(2)}`, sub: `${debtors.length} macaamiil · customers`, Icon: HandCoins, tone: 'var(--danger)', bg: 'var(--danger-bg)', onClick: () => navigate('/dashboard/customers') },
   ];
 
   const recent = [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
@@ -91,7 +95,10 @@ export default function Overview() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 22 }}>
         {stats.map((st, i) => (
-          <div className="stat-card" key={i} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div
+            className="stat-card" key={i} onClick={st.onClick}
+            style={{ display: 'flex', flexDirection: 'column', gap: 12, cursor: st.onClick ? 'pointer' : 'default' }}
+          >
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, lineHeight: 1.4 }}>{st.en}<br />{st.so}</div>
               <div style={{
