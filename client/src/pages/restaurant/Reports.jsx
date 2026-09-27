@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { BarChart3, Receipt, Package, FileSpreadsheet, FileText, RotateCcw, Search } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
+import ReceiptModal from '../../components/ReceiptModal';
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 
@@ -91,9 +92,10 @@ export default function Reports() {
 }
 
 function ReportView({ kind }) {
-  const { addToast } = useOutletContext();
+  const { addToast, me } = useOutletContext();
   const isSales = kind === 'sales';
   const isProducts = kind === 'products';
+  const [viewOrder, setViewOrder] = useState(null);
 
   const today = useMemo(() => new Date(), []);
   const monthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today]);
@@ -320,7 +322,10 @@ function ReportView({ kind }) {
               </thead>
               <tbody>
                 {data.rows.map((row, ri) => (
-                  <tr key={ri} style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                  <tr
+                    key={ri} onClick={isSales ? () => setViewOrder(row) : undefined}
+                    style={{ borderBottom: '1px solid var(--border-soft)', cursor: isSales ? 'pointer' : 'default' }}
+                  >
                     {data.columns.map((c) => (
                       <td key={c.key} style={{
                         padding: '10px 16px', textAlign: c.align === 'right' ? 'right' : 'left',
@@ -354,6 +359,10 @@ function ReportView({ kind }) {
             </table>
           </div>
         </div>
+      )}
+
+      {viewOrder && (
+        <ReceiptModal order={viewOrder} restaurant={me} onClose={() => setViewOrder(null)} />
       )}
     </div>
   );

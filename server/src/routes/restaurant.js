@@ -1345,15 +1345,20 @@ async function buildSalesSpec(req) {
       payMethod = 'Online' + (o.payment.provider ? ' · ' + String(o.payment.provider).toUpperCase() : '');
     }
     return {
+      id: o._id,
       number: o.number,
       createdAt: o.createdAt,
       channel: CHANNEL_LABEL[o.channel] || o.channel,
       itemsCount,
+      items: o.items || [],
       discount: o.discount || 0,
       total: o.total || 0,
       payMethod: payMethod || '—',
       collectedBy: o.payment?.collectedByName || '',
       status: o.payment?.status === 'paid' ? 'Paid' : 'Pending',
+      note: o.note || '',
+      createdByName: o.createdByName || null,
+      phone: o.phone || '',
     };
   });
 
