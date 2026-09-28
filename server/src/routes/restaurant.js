@@ -790,21 +790,26 @@ function mapMethod(m, agg) {
 
 router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']), async (req, res) => {
   const methods = await PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean();
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  // "Today" is keyed off the order's actual payment.paidAt for a row attributed to one
-  // order (not the ledger row's own createdAt, and not the order's createdAt) — the
-  // same date field every other "today" figure in the app agrees on. A row with no
-  // order (a customer debt settlement — see /customers/:id/payments — pays down a
-  // running balance, not one specific order) falls back to its own createdAt instead,
-  // which for a settlement *is* the meaningful date. A row whose order no longer exists
-  // (left over from before order deletion started reversing these rows) falls back the
-  // same way, but that's always in the past for a historical row, so it can't wrongly
-  // inflate *today's* total even though the fallback technically applies to it too.
+  // Fixed +03:00 (Africa/Mogadishu) midnight, not the server process's ambient
+  // timezone — same reasoning as reportRange() in the Reports section below. Shifting
+  // "now" by the offset and reading it back with UTC getters gives today's Mogadishu
+  // calendar date regardless of what timezone the host itself happens to be in.
+  const mNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const y = mNow.getUTCFullYear();
+  const mo = String(mNow.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(mNow.getUTCDate()).padStart(2, '0');
+  const start = new Date(`${y}-${mo}-${d}T00:00:00.000+03:00`);
+  // "Today" is keyed off the order's createdAt for a row attributed to one order — same
+  // as every other "today" figure in the app (Orders today, Revenue today, Sales
+  // Report): an order rung in tonight is tonight's, even if it isn't collected until
+  // after midnight. A row with no order (a customer debt settlement — see
+  // /customers/:id/payments — pays down a running balance, not one specific order)
+  // falls back to its own createdAt instead, which for a settlement *is* the
+  // meaningful date.
   const rows = await PaymentCollection.aggregate([
     { $match: { restaurant: new mongoose.Types.ObjectId(req.auth.id) } },
     { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'orderDoc' } },
-    { $addFields: { relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.payment.paidAt', 0] }, '$createdAt'] } } },
+    { $addFields: { relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.createdAt', 0] }, '$createdAt'] } } },
     { $match: { relevantDate: { $gte: start } } },
     { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
   ]);
