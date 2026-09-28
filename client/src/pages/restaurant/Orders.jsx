@@ -34,6 +34,7 @@ const TABS = [
   { id: 'all', so: 'Dhammaan', en: 'All' },
   { id: 'pending', so: 'Sugaya', en: 'Pending' },
   { id: 'paid', so: 'La bixiyay', en: 'Paid' },
+  { id: 'debt', so: 'Deyn', en: 'Debt' },
 ];
 
 const PAGE_SIZE = 10;
@@ -266,14 +267,19 @@ export default function Orders() {
   }
   const counts = useMemo(() => ({
     all: orders.length,
-    pending: orders.filter((o) => !isPaid(o)).length,
+    // Debt orders live under their own "Deyn" tab (unpaid) or "Paid" (once settled) —
+    // "Pending" is for orders actually waiting on a normal bill, not ones already
+    // charged to a customer account.
+    pending: orders.filter((o) => !isPaid(o) && !isDebt(o)).length,
+    debt: orders.filter((o) => isDebt(o) && !isPaid(o)).length,
     paid: orders.filter((o) => isPaid(o)).length,
   }), [orders]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders.filter((o) => {
-      if (tab === 'pending' && isPaid(o)) return false;
+      if (tab === 'pending' && (isPaid(o) || isDebt(o))) return false;
+      if (tab === 'debt' && !(isDebt(o) && !isPaid(o))) return false;
       if (tab === 'paid' && !isPaid(o)) return false;
       if (!q) return true;
       const m = channelMeta(o.channel, o.tableLabel);
