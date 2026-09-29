@@ -1478,14 +1478,9 @@ async function buildProductsSpec(req) {
   const q = req.query || {};
   const { from, to, range } = reportRange(q);
   const filter = { restaurant: req.auth.id };
-  // Same paid-vs-pending date matching as the Sales report, so a product's qty here
-  // for a given range always agrees with the orders that range surfaces there.
-  if (range) {
-    filter.$or = [
-      { 'payment.status': 'paid', 'payment.paidAt': range },
-      { 'payment.status': { $ne: 'paid' }, createdAt: range },
-    ];
-  }
+  // Same order-creation-date matching as the Sales report, so a product's qty here for
+  // a given range always agrees with the orders that range surfaces there.
+  if (range) filter.createdAt = range;
 
   const orders = await Order.find(filter).select('items').lean();
   const sold = new Map(); // order item name -> { qty, revenue }
@@ -1539,7 +1534,11 @@ async function buildProductsSpec(req) {
     reportName: 'Products Report', reportNameSo: 'Warbixinta Alaabta',
     filterLines,
     summary: [
-      { label: 'Products · Alaabta', value: String(rows.length) },
+      // Catalog count only — matches "Active products" on the Dashboard. `rows` also
+      // includes a row per legacy sold-item name that no longer matches any current
+      // product (see the loop above), which would otherwise inflate this past the
+      // actual number of products the restaurant has.
+      { label: 'Products · Alaabta', value: String(products.filter((p) => p.status === 'active').length) },
       { label: 'Qty sold · Tirada', value: String(sumQty) },
       { label: 'Revenue · Dakhliga', value: fmtMoney(sumRevenue) },
       { label: 'Avg / product · Celceliska', value: fmtMoney(rows.length ? sumRevenue / rows.length : 0) },
