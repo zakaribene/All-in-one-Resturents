@@ -232,11 +232,21 @@ router.post('/tables', requirePermission('qr'), async (req, res) => {
 });
 
 // ---- Orders ----
+// Every still-open pay-at-table order (pending, or charged to a customer account and
+// not yet settled) has to show up here regardless of how old it is — there's no "too
+// old to matter" for money that's still owed, and this list is what the Pending and
+// Deyn tabs are built from. A hard limit here used to silently drop older unpaid debt
+// orders once the restaurant had more than 200 qualifying orders total. Paid history,
+// on the other hand, only needs to be recent to be useful on this page, so it keeps the
+// original cap.
 router.get('/orders', requireAnyPermission(['overview', 'orders']), async (req, res) => {
-  const orders = await Order.find({
-    restaurant: req.auth.id,
-    $or: [{ 'payment.method': 'pay_at_table' }, { 'payment.status': 'paid' }],
-  }).sort({ createdAt: -1 }).limit(200).populate('debtor', 'name phone').lean();
+  const [unpaid, paid] = await Promise.all([
+    Order.find({ restaurant: req.auth.id, 'payment.method': 'pay_at_table', 'payment.status': { $ne: 'paid' } })
+      .sort({ createdAt: -1 }).limit(2000).populate('debtor', 'name phone').lean(),
+    Order.find({ restaurant: req.auth.id, 'payment.status': 'paid' })
+      .sort({ createdAt: -1 }).limit(200).populate('debtor', 'name phone').lean(),
+  ]);
+  const orders = [...unpaid, ...paid].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   res.json(orders.map(mapOrder));
 });
 
