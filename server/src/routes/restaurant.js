@@ -307,6 +307,48 @@ router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), as
   res.json(payload);
 });
 
+// Undoes a mistaken "Bixi · Mark as paid" tap — the money was never actually collected,
+// so this reverses everything that happened when it was marked paid: gives back
+// whatever wallet balance it credited, deletes the ledger row(s) for it, and drops the
+// order back to pending so it shows up in that tab again and can be edited/paid normally.
+// Only for a plain POS order paid the normal manual way — a debt order's "paid" tracks
+// Customer.balance instead (use the Customers page to correct that), so this refuses it.
+router.post('/orders/:id/revert-to-pending', requireAnyPermission(['orders', 'pos']), async (req, res) => {
+  if (req.auth.role === 'staff' && !req.auth.permissions?.includes('orders_delete')) {
+    return res.status(403).json({ error: 'You do not have permission to do this · Fasax kuma lihid' });
+  }
+  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be reverted here' });
+  if (order.payment?.status !== 'paid') return res.status(400).json({ error: 'Order is not marked paid' });
+  if (order.debtor) return res.status(400).json({ error: 'This order is charged to a customer account — settle it from the Customers page instead' });
+
+  const collections = await PaymentCollection.find({ restaurant: req.auth.id, order: order._id }).lean();
+  if (collections.length) {
+    const byMethod = new Map();
+    for (const c of collections) byMethod.set(String(c.method), (byMethod.get(String(c.method)) || 0) + c.amount);
+    await Promise.all([...byMethod.entries()].map(([methodId, amount]) =>
+      PaymentMethod.updateOne({ _id: methodId, restaurant: req.auth.id }, { $inc: { balance: -amount } })
+    ));
+    await PaymentCollection.deleteMany({ restaurant: req.auth.id, order: order._id });
+  }
+
+  order.payment.status = 'none';
+  order.payment.paidAt = null;
+  order.payment.manualMethod = null;
+  order.payment.manualMethodName = null;
+  order.payment.collectedByName = null;
+  await order.save();
+
+  logStoreActivity(req, {
+    module: 'orders', action: 'Update',
+    message: `Order #${order.number} reverted to pending — "Paid" was tapped by mistake (${fmtMoney(order.total)} given back)`,
+  });
+  const payload = mapOrder(order.toObject());
+  emitToRestaurant(req.auth.id, 'order:updated', payload);
+  res.json(payload);
+});
+
 // Corrects which wallet an already-paid order's money was attributed to — e.g. staff
 // tapped EVC at checkout when the customer actually paid via E.Dahab. Moves the order's
 // total off the old wallet's balance and onto the new one, and updates the ledger row to
@@ -809,21 +851,46 @@ router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']),
   const mo = String(mNow.getUTCMonth() + 1).padStart(2, '0');
   const d = String(mNow.getUTCDate()).padStart(2, '0');
   const start = new Date(`${y}-${mo}-${d}T00:00:00.000+03:00`);
+
+  // A wallet that's been transferred OUT of today no longer holds whatever it collected
+  // before that transfer — it's already moved on to wherever the transfer sent it. So
+  // "Today" for that wallet resets to zero at the transfer instead of at midnight: it
+  // reads as "collected since I last emptied this wallet," not "collected since
+  // midnight, plus money that isn't here anymore." A wallet never transferred out of
+  // today just keeps the plain midnight boundary.
+  const restaurantId = new mongoose.Types.ObjectId(req.auth.id);
+  const sweptTransfers = await PaymentTransfer.aggregate([
+    { $match: { restaurant: restaurantId, createdAt: { $gte: start } } },
+    { $group: { _id: '$fromMethod', last: { $max: '$createdAt' } } },
+  ]);
+  const sweptAt = new Map(sweptTransfers.map((t) => [String(t._id), t.last]));
+
   // "Today" is keyed off the order's createdAt for a row attributed to one order — same
   // as every other "today" figure in the app (Orders today, Revenue today, Sales
   // Report): an order rung in tonight is tonight's, even if it isn't collected until
   // after midnight. A row with no order (a customer debt settlement — see
   // /customers/:id/payments — pays down a running balance, not one specific order)
   // falls back to its own createdAt instead, which for a settlement *is* the
-  // meaningful date.
+  // meaningful date. No date filter in the query itself — the threshold differs per
+  // wallet (see sweptAt above), so it's applied per row below instead.
   const rows = await PaymentCollection.aggregate([
-    { $match: { restaurant: new mongoose.Types.ObjectId(req.auth.id) } },
+    { $match: { restaurant: restaurantId } },
     { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'orderDoc' } },
-    { $addFields: { relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.createdAt', 0] }, '$createdAt'] } } },
-    { $match: { relevantDate: { $gte: start } } },
-    { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    { $project: {
+      method: 1, amount: 1,
+      relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.createdAt', 0] }, '$createdAt'] },
+    } },
   ]);
-  const byId = new Map(rows.map(r => [String(r._id), r]));
+  const byId = new Map();
+  for (const row of rows) {
+    const key = String(row.method);
+    const threshold = sweptAt.get(key) > start ? sweptAt.get(key) : start;
+    if (row.relevantDate < threshold) continue;
+    const cur = byId.get(key) || { total: 0, count: 0 };
+    cur.total += row.amount;
+    cur.count += 1;
+    byId.set(key, cur);
+  }
   res.json(methods.map(m => mapMethod(m, byId.get(String(m._id)))));
 });
 
@@ -1493,10 +1560,21 @@ async function buildProductsSpec(req) {
     }
   }
 
-  // Every product in the catalog gets a row — including ones with zero sales in this
-  // range, so a "least sold" sort actually surfaces them — matched to its sales by the
-  // name snapshot stored on each order item (orders don't keep a product reference).
-  const products = await Product.find({ restaurant: req.auth.id }).populate('category').lean();
+  // Every matching product in the catalog gets a row — including ones with zero sales
+  // in this range, so a "least sold" sort actually surfaces them — matched to its sales
+  // by the name snapshot stored on each order item (orders don't keep a product
+  // reference). Search and category narrow which PRODUCTS show, independent of the
+  // date range, which only narrows which ORDERS feed the qty/revenue numbers.
+  const productFilter = { restaurant: req.auth.id };
+  if (q.category && q.category !== 'all' && mongoose.Types.ObjectId.isValid(q.category)) {
+    productFilter.category = q.category;
+  }
+  const search = String(q.search || '').trim();
+  if (search) {
+    const re = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    productFilter.$or = [{ nameEn: re }, { nameSo: re }];
+  }
+  const products = await Product.find(productFilter).populate('category').lean();
   const rows = products.map((p) => {
     const s = sold.get(p.nameEn) || { qty: 0, revenue: 0 };
     sold.delete(p.nameEn);
@@ -1509,13 +1587,18 @@ async function buildProductsSpec(req) {
     };
   });
   // Sales recorded under a name that no longer matches a current product (deleted or
-  // renamed since) still count — just without a category.
-  for (const [name, s] of sold) {
-    rows.push({
-      name, categoryName: '—', qty: s.qty,
-      revenue: Math.round(s.revenue * 100) / 100,
-      avgPrice: s.qty ? Math.round((s.revenue / s.qty) * 100) / 100 : 0,
-    });
+  // renamed since) still count — just without a category, and only when there's no
+  // category filter active (an orphan name can't match a specific category) and it
+  // still matches any active search text.
+  if (!productFilter.category) {
+    for (const [name, s] of sold) {
+      if (search && !name.toLowerCase().includes(search.toLowerCase())) continue;
+      rows.push({
+        name, categoryName: '—', qty: s.qty,
+        revenue: Math.round(s.revenue * 100) / 100,
+        avgPrice: s.qty ? Math.round((s.revenue / s.qty) * 100) / 100 : 0,
+      });
+    }
   }
 
   const asc = q.sort === 'least';
@@ -1524,10 +1607,17 @@ async function buildProductsSpec(req) {
   const sumQty = rows.reduce((a, r) => a + r.qty, 0);
   const sumRevenue = rows.reduce((a, r) => a + r.revenue, 0);
 
+  let categoryLabel = null;
+  if (productFilter.category) {
+    const cat = await Category.findById(productFilter.category).lean();
+    categoryLabel = cat?.nameEn || null;
+  }
   const filterLines = [
     `Range: ${from || '—'}  ->  ${to || '—'}`,
     `Sort: ${asc ? 'Least sold first' : 'Most sold first'}`,
-  ];
+    search ? `Search: ${search}` : null,
+    categoryLabel ? `Category: ${categoryLabel}` : null,
+  ].filter(Boolean);
 
   return {
     restaurant: await reportBrand(req.auth.id),

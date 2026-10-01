@@ -108,12 +108,19 @@ function ReportView({ kind }) {
   const [method, setMethod] = useState('all');
   const [category, setCategory] = useState('all');
   const [sort, setSort] = useState('all');
+  const [search, setSearch] = useState('');
+  const [productCategories, setProductCategories] = useState([]);
 
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState('');
+
+  useEffect(() => {
+    if (!isProducts) return;
+    api.get('/restaurant/categories').then((r) => setProductCategories(r.data)).catch(() => setProductCategories([]));
+  }, [isProducts]);
 
   const params = useCallback(() => {
     const p = {};
@@ -126,12 +133,14 @@ function ReportView({ kind }) {
       if (method !== 'all') p.method = method;
     } else if (isProducts) {
       if (sort === 'least') p.sort = 'least';
+      if (search.trim()) p.search = search.trim();
+      if (category !== 'all') p.category = category;
     } else {
       if (category !== 'all') p.category = category;
       if (method !== 'all') p.method = method;
     }
     return p;
-  }, [from, to, orderId, channel, status, method, category, sort, isSales, isProducts]);
+  }, [from, to, orderId, channel, status, method, category, sort, search, isSales, isProducts]);
 
   const fetchReport = useCallback(() => {
     setBusy(true);
@@ -235,13 +244,25 @@ function ReportView({ kind }) {
           )}
 
           {isProducts && (
-            <Field label="Kala sooc · Sort">
-              <select className="field-input" value={sort} onChange={(e) => setSort(e.target.value)} style={{ minWidth: 200 }}>
-                <option value="all">Dhammaan (ugu badan → ugu yar) · All</option>
-                <option value="most">Ugu iibka badan · Most sold</option>
-                <option value="least">Ugu iibka yar · Least sold</option>
-              </select>
-            </Field>
+            <>
+              <Field label="Raadi · Search">
+                <input className="field-input" placeholder="Magaca alaabta… · Product name…" value={search}
+                  onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 170 }} />
+              </Field>
+              <Field label="Qayb · Category">
+                <select className="field-input" value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: 160 }}>
+                  <option value="all">Dhammaan · All</option>
+                  {productCategories.map((c) => <option key={c.id} value={c.id}>{c.en}</option>)}
+                </select>
+              </Field>
+              <Field label="Kala sooc · Sort">
+                <select className="field-input" value={sort} onChange={(e) => setSort(e.target.value)} style={{ minWidth: 200 }}>
+                  <option value="all">Dhammaan (ugu badan → ugu yar) · All</option>
+                  <option value="most">Ugu iibka badan · Most sold</option>
+                  <option value="least">Ugu iibka yar · Least sold</option>
+                </select>
+              </Field>
+            </>
           )}
 
           {!isProducts && (

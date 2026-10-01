@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Wallet, Pencil, Receipt } from 'lucide-react';
+import { Bell, Search, StickyNote, Check, Trash2, Globe, ShoppingBag, MapPin, ShoppingCart, Plus, Wallet, Pencil, Receipt, RotateCcw } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
@@ -265,6 +265,20 @@ export default function Orders() {
       addToast({ title: 'Way fashilantay · Failed to delete', body: apiErrorMessage(err), tone: 'error' });
     }
   }
+  async function revertToPending(id) {
+    const ok = await confirm({
+      title: 'Ka noqo Pending · Undo "Paid"?',
+      tone: 'danger', confirmLabel: 'Haa, celi Pending · Undo',
+    });
+    if (!ok) return;
+    try {
+      const { data } = await api.post(`/restaurant/orders/${id}/revert-to-pending`);
+      setOrders((prev) => prev.map((o) => (o.id === id ? data : o)));
+      addToast({ title: 'Waa la celiyay Pending · Reverted to pending', body: `#${data.number}`, tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
+    }
+  }
   const counts = useMemo(() => ({
     all: orders.length,
     // Debt orders live under their own "Deyn" tab (unpaid) or "Paid" (once settled) —
@@ -391,6 +405,14 @@ export default function Orders() {
                 {isPaid(o) && o.payment?.manualMethod && (
                   <button className="btn-outline btn-sm" style={{ height: 32 }} title="Beddel habka bixinta · Edit payment method" onClick={() => setEditPaymentOrder(o)}>
                     <Pencil size={13} strokeWidth={2.5} /> Edit
+                  </button>
+                )}
+                {isPaid(o) && isPosOrder(o) && !isDebt(o) && canDelete && (
+                  <button
+                    className="btn-outline btn-sm" style={{ height: 32, color: 'var(--danger)' }}
+                    title="Ka noqo Pending · Undo (kolkii 'Paid' lagu riixay khalad)" onClick={() => revertToPending(o.id)}
+                  >
+                    <RotateCcw size={13} strokeWidth={2.5} /> Undo
                   </button>
                 )}
                 {/* A debt order settles through the Customers page only — its total is
