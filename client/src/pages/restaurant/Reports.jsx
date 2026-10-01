@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { BarChart3, Receipt, Package, FileSpreadsheet, FileText, RotateCcw, Search } from 'lucide-react';
+import { BarChart3, Receipt, Package, Wallet, FileSpreadsheet, FileText, RotateCcw, Search } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import ReceiptModal from '../../components/ReceiptModal';
 
-const money = (n) => '$' + Number(n || 0).toFixed(2);
+const money = (n) => {
+  const v = Number(n || 0);
+  return (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
+};
 
 // Local (browser) time, not UTC — an order paid at 00:13 local should read as today's
 // date here, the same as it does on the Orders page and in the Today stat tiles. A
@@ -54,6 +57,7 @@ const TABS = [
   { id: 'sales', en: 'Sales Report', so: 'Warbixinta Iibka', Icon: BarChart3 },
   { id: 'expenses', en: 'Expense Report', so: 'Warbixinta Kharashka', Icon: Receipt },
   { id: 'products', en: 'Products Report', so: 'Warbixinta Alaabta', Icon: Package },
+  { id: 'wallets', en: 'Wallets Report', so: 'Warbixinta Xisaabaadka', Icon: Wallet },
 ];
 
 export default function Reports() {
@@ -95,6 +99,7 @@ function ReportView({ kind }) {
   const { addToast, me } = useOutletContext();
   const isSales = kind === 'sales';
   const isProducts = kind === 'products';
+  const isWallets = kind === 'wallets';
   const [viewOrder, setViewOrder] = useState(null);
 
   const today = useMemo(() => new Date(), []);
@@ -110,6 +115,16 @@ function ReportView({ kind }) {
   const [sort, setSort] = useState('all');
   const [search, setSearch] = useState('');
   const [productCategories, setProductCategories] = useState([]);
+  const [walletMonths, setWalletMonths] = useState([]);
+  const [month, setMonth] = useState('');
+
+  useEffect(() => {
+    if (!isWallets) return;
+    api.get('/restaurant/reports/wallets/months').then((r) => {
+      setWalletMonths(r.data);
+      if (r.data.length) setMonth((cur) => cur || r.data[0].key);
+    }).catch(() => setWalletMonths([]));
+  }, [isWallets]);
 
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -124,6 +139,10 @@ function ReportView({ kind }) {
 
   const params = useCallback(() => {
     const p = {};
+    if (isWallets) {
+      if (month) p.month = month;
+      return p;
+    }
     if (from) p.from = from;
     if (to) p.to = to;
     if (isSales) {
@@ -140,16 +159,17 @@ function ReportView({ kind }) {
       if (method !== 'all') p.method = method;
     }
     return p;
-  }, [from, to, orderId, channel, status, method, category, sort, search, isSales, isProducts]);
+  }, [from, to, orderId, channel, status, method, category, sort, search, isSales, isProducts, isWallets, month]);
 
   const fetchReport = useCallback(() => {
+    if (isWallets && !month) return;
     setBusy(true);
     setError('');
     api.get(`/restaurant/reports/${kind}`, { params: params() })
       .then(({ data: d }) => setData(d))
       .catch((e) => setError(apiErrorMessage(e)))
       .finally(() => { setBusy(false); setLoaded(true); });
-  }, [kind, params]);
+  }, [kind, params, isWallets, month]);
 
   // Auto-run the report as filters change — no need to press a button.
   // Debounced so typing an Order ID doesn't fire a request per keystroke.
@@ -171,6 +191,7 @@ function ReportView({ kind }) {
   }
 
   function reset() {
+    if (isWallets) { setMonth(walletMonths[0]?.key || ''); return; }
     setFrom(toInputDate(monthStart));
     setTo(toInputDate(today));
     setOrderId(''); setChannel('all'); setStatus('all'); setMethod('all'); setCategory('all'); setSort('all');
@@ -202,12 +223,22 @@ function ReportView({ kind }) {
       {/* ---- Filters ---- */}
       <div className="card card-pad" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <Field label="Laga bilaabo · From">
-            <input type="date" className="field-input" value={from} onChange={(e) => setFrom(e.target.value)} style={{ minWidth: 150 }} />
-          </Field>
-          <Field label="Ilaa · To">
-            <input type="date" className="field-input" value={to} onChange={(e) => setTo(e.target.value)} style={{ minWidth: 150 }} />
-          </Field>
+          {isWallets ? (
+            <Field label="Bisha · Month">
+              <select className="field-input" value={month} onChange={(e) => setMonth(e.target.value)} style={{ minWidth: 180 }}>
+                {walletMonths.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+            </Field>
+          ) : (
+            <>
+              <Field label="Laga bilaabo · From">
+                <input type="date" className="field-input" value={from} onChange={(e) => setFrom(e.target.value)} style={{ minWidth: 150 }} />
+              </Field>
+              <Field label="Ilaa · To">
+                <input type="date" className="field-input" value={to} onChange={(e) => setTo(e.target.value)} style={{ minWidth: 150 }} />
+              </Field>
+            </>
+          )}
 
           {isSales && (
             <>
@@ -234,7 +265,7 @@ function ReportView({ kind }) {
             </>
           )}
 
-          {!isSales && !isProducts && (
+          {!isSales && !isProducts && !isWallets && (
             <Field label="Qayb · Category">
               <select className="field-input" value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: 160 }}>
                 <option value="all">Dhammaan · All</option>
@@ -265,7 +296,7 @@ function ReportView({ kind }) {
             </>
           )}
 
-          {!isProducts && (
+          {!isProducts && !isWallets && (
             <Field label={isSales ? 'Lacag-bixin · Payment' : 'Hab · Method'}>
               <select className="field-input" value={method} onChange={(e) => setMethod(e.target.value)} style={{ minWidth: 150 }}>
                 <option value="all">Dhammaan · All</option>
@@ -327,7 +358,7 @@ function ReportView({ kind }) {
       {loaded && data && !!rowCount && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', opacity: busy ? 0.55 : 1, transition: 'opacity .15s' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isSales ? 1000 : isProducts ? 780 : 720 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isSales ? 1000 : isProducts ? 780 : isWallets ? 820 : 720 }}>
               <thead>
                 <tr style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
                   {data.columns.map((c) => (
@@ -352,7 +383,9 @@ function ReportView({ kind }) {
                         padding: '10px 16px', textAlign: c.align === 'right' ? 'right' : 'left',
                         whiteSpace: c.key === 'note' ? 'normal' : 'nowrap',
                         fontWeight: c.key === 'total' || c.key === 'amount' || c.key === 'revenue' ? 700 : 400,
-                        color: c.key === 'amount' ? 'var(--danger)' : 'var(--text)',
+                        color: c.key === 'amount'
+                          ? (isWallets ? (row.amount < 0 ? 'var(--danger)' : 'var(--success)') : 'var(--danger)')
+                          : 'var(--text)',
                       }}>
                         {fmtCell(row[c.key], c.format)}
                       </td>

@@ -30,7 +30,7 @@ const tabaarak = require('../utils/tabaarak');
 const { buildXlsx, buildPdf, fmtMoney, fmtDate } = require('../utils/reportExport');
 const { logStoreActivity, MODULE_LABEL } = require('../utils/activityLog');
 const { upload } = require('../utils/upload');
-const { businessDayStart, businessDayRange } = require('../utils/businessDay');
+const { businessDayStart, businessDayRange, businessMonthKey, businessMonthRange, addMonthsToKey } = require('../utils/businessDay');
 
 const router = express.Router();
 router.use(requireRestaurantOrStaff);
@@ -832,10 +832,17 @@ router.post('/pos/orders/:id/pay-at-table', requirePermission('pos'), async (req
 });
 
 // ---- Payment methods (manual wallets + running balances) ----
-function mapMethod(m, agg) {
+// `balance` is the all-time running total (unchanged — still what overdraft checks on
+// transfers/expenses use internally). `monthBalance` is a separate, purely computed
+// accounting-period figure: what this wallet collected/received/paid out since the
+// current business month started, net of nothing from before. It's what the UI shows as
+// the wallet's headline balance — see MONTHLY_PERIOD_NOTES below for why.
+function mapMethod(m, agg, monthBalance) {
   return {
     id: m._id, name: m.name, status: m.status,
     balance: Math.round((m.balance || 0) * 100) / 100,
+    monthBalance: Math.round((monthBalance || 0) * 100) / 100,
+    monthKey: businessMonthKey(),
     todayTotal: Math.round((agg?.total || 0) * 100) / 100,
     count: agg?.count || 0,
   };
@@ -886,7 +893,48 @@ router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']),
     cur.count += 1;
     byId.set(key, cur);
   }
-  res.json(methods.map(m => mapMethod(m, byId.get(String(m._id)))));
+
+  // "This month"'s balance is a separate accounting-period figure, not a slice of the
+  // all-time `balance` above: every wallet starts the month at $0.00 and accumulates only
+  // what moves through it from the business month's own 3 PM-on-the-1st boundary onward
+  // (see businessMonthRange) — collections in, transfers in, minus transfers out and
+  // expenses paid. Nothing is deleted or reset to produce this: it's computed fresh from
+  // the same PaymentCollection/PaymentTransfer/Expense ledgers every time, so last month's
+  // activity stays fully intact and queryable (see buildWalletsSpec / Reports' "Wallets"
+  // tab) while this figure simply never counts it.
+  const monthRange = businessMonthRange(businessMonthKey());
+  const monthCollectedById = new Map();
+  for (const row of rows) {
+    if (row.relevantDate >= monthRange.$gte && row.relevantDate < monthRange.$lt) {
+      const key = String(row.method);
+      monthCollectedById.set(key, (monthCollectedById.get(key) || 0) + row.amount);
+    }
+  }
+  const [monthTransfers, expensesAgg] = await Promise.all([
+    transfersForMonth(req.auth.id, businessMonthKey()),
+    Expense.aggregate([
+      { $match: { restaurant: restaurantId, createdAt: monthRange } },
+      { $group: { _id: '$method', total: { $sum: '$amount' } } },
+    ]),
+  ]);
+  const transfersInById = new Map();
+  const transfersOutById = new Map();
+  for (const t of monthTransfers) {
+    const fromKey = String(t.fromMethod), toKey = String(t.toMethod);
+    transfersInById.set(toKey, (transfersInById.get(toKey) || 0) + t.amount);
+    transfersOutById.set(fromKey, (transfersOutById.get(fromKey) || 0) + t.amount);
+  }
+  const expensesById = new Map(expensesAgg.map((r) => [String(r._id), r.total]));
+  const monthBalanceById = new Map(methods.map((m) => {
+    const key = String(m._id);
+    const net = (monthCollectedById.get(key) || 0)
+      + (transfersInById.get(key) || 0)
+      - (transfersOutById.get(key) || 0)
+      - (expensesById.get(key) || 0);
+    return [key, net];
+  }));
+
+  res.json(methods.map(m => mapMethod(m, byId.get(String(m._id)), monthBalanceById.get(String(m._id)))));
 });
 
 router.get('/payment-methods/collections', requirePermission('paymethods'), async (req, res) => {
@@ -1622,6 +1670,221 @@ async function buildProductsSpec(req) {
   };
 }
 
+// ---- Wallets report (monthly accounting-period statement) ----
+// Each wallet's current balance (Payment Methods page, Dashboard) is scoped to the
+// current business month — see GET /payment-methods above. This report is the other
+// half of that design: it lets any past (or the current) business month be reopened and
+// its complete activity reviewed, without that month ever having been deleted or rolled
+// into another one. "Opening balance" is always $0.00 for every month, by design (each
+// month is its own accounting period, not a running carry-forward) — see the closing
+// balance per wallet below, which is simply that month's net activity.
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function monthKeyLabel(key) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+  if (!m) return key;
+  return `${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+const WALLETS_COLUMNS = [
+  { header: 'Date / Time', headerSo: 'Taariikh', key: 'createdAt', w: 1.9, width: 19, format: 'datetime' },
+  { header: 'Wallet', headerSo: 'Xisaab', key: 'walletName', w: 1.4, width: 16 },
+  { header: 'Type', headerSo: 'Nooca', key: 'type', w: 1.3, width: 14 },
+  { header: 'Reference', headerSo: 'Tixraac', key: 'reference', w: 1.8, width: 20 },
+  { header: 'Amount', headerSo: 'Qadar', key: 'amount', w: 1.2, width: 13, align: 'right', format: 'money' },
+  { header: 'Staff', headerSo: 'Qofka', key: 'staffName', w: 1.4, width: 16 },
+];
+
+// Every business month this restaurant has any recorded activity in (plus the current
+// one even if still empty), most recent first — drives the Reports month picker. Never
+// hard-codes a specific month: it's derived from the earliest activity actually on file.
+async function listWalletMonths(restaurantId) {
+  const rid = new mongoose.Types.ObjectId(restaurantId);
+  const [earliestOrder, earliestExpense, earliestTransfer, earliestDebtPayment] = await Promise.all([
+    Order.findOne({ restaurant: rid }).sort({ createdAt: 1 }).select('createdAt').lean(),
+    Expense.findOne({ restaurant: rid }).sort({ createdAt: 1 }).select('createdAt').lean(),
+    PaymentTransfer.findOne({ restaurant: rid }).sort({ createdAt: 1 }).select('createdAt').lean(),
+    PaymentCollection.findOne({ restaurant: rid }).sort({ createdAt: 1 }).select('createdAt').lean(),
+  ]);
+  const dates = [earliestOrder, earliestExpense, earliestTransfer, earliestDebtPayment]
+    .map((d) => d?.createdAt).filter(Boolean);
+  const earliest = dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : new Date();
+
+  const keys = [];
+  const [ey, em] = businessMonthKey(earliest).split('-').map(Number);
+  const [cy, cm] = businessMonthKey().split('-').map(Number);
+  let y = ey, mo = em;
+  // Capped — a restaurant open for decades would otherwise produce an unbounded list.
+  for (let i = 0; i < 600 && (y < cy || (y === cy && mo <= cm)); i++) {
+    keys.push(`${y}-${pad2mo(mo)}`);
+    mo += 1;
+    if (mo > 12) { mo = 1; y += 1; }
+  }
+  return keys.reverse().map((key) => ({ key, label: monthKeyLabel(key) }));
+}
+function pad2mo(n) { return String(n).padStart(2, '0'); }
+
+// Earliest moment a wallet received anything within a given month, keyed by PaymentMethod
+// id — either a direct collection (relevantDate: order date, or the row's own date for a
+// debt settlement — same rule as everywhere else) or an incoming transfer from another
+// wallet. Both count: a "Main"-style wallet (E,Dahab Second main, Main) never collects an
+// order directly — it only ever receives transfers — so collections alone would make it
+// look like it got nothing all month, every month, and incorrectly flag its own ordinary
+// mid-month transfers-out as carried-over. A wallet absent from the result got nothing at
+// all that month.
+async function earliestIncomingByWallet(restaurantId, range) {
+  const rid = new mongoose.Types.ObjectId(restaurantId);
+  const [collAgg, transfersIn] = await Promise.all([
+    PaymentCollection.aggregate([
+      { $match: { restaurant: rid } },
+      { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'orderDoc' } },
+      { $project: { method: 1, relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.createdAt', 0] }, '$createdAt'] } } },
+      { $match: { relevantDate: range } },
+      { $group: { _id: '$method', earliest: { $min: '$relevantDate' } } },
+    ]),
+    PaymentTransfer.find({ restaurant: restaurantId, createdAt: range }).select('toMethod createdAt').lean(),
+  ]);
+  const earliest = new Map(collAgg.map((r) => [String(r._id), r.earliest]));
+  for (const t of transfersIn) {
+    const key = String(t.toMethod);
+    const cur = earliest.get(key);
+    if (!cur || t.createdAt < cur) earliest.set(key, t.createdAt);
+  }
+  return earliest;
+}
+
+// A wallet-to-wallet transfer is normally counted in the business month it's dated in.
+// But the first transfer out of a wallet in a month — one that happens before that
+// wallet has collected anything NEW that month — almost always isn't that month's
+// business: it's the daily EVC/E Dahab -> Main sweep clearing out cash that was actually
+// collected before the month boundary, just not moved yet. Counting it against the new
+// month would make that wallet start the month negative, which is wrong — the money it's
+// moving was never this month's to begin with. So it's attributed to the month it's
+// actually clearing instead: both legs of the transfer move together, nothing is split,
+// and nothing is deleted — a reattributed transfer still shows up in Reports under
+// whichever month it now belongs to, at its real timestamp.
+async function transfersForMonth(restaurantId, monthKey) {
+  const range = businessMonthRange(monthKey);
+  const nextRange = businessMonthRange(addMonthsToKey(monthKey, 1));
+
+  const [ownTransfers, nextTransfers, earliestOwn, earliestNext] = await Promise.all([
+    PaymentTransfer.find({ restaurant: restaurantId, createdAt: range }).lean(),
+    PaymentTransfer.find({ restaurant: restaurantId, createdAt: nextRange }).lean(),
+    earliestIncomingByWallet(restaurantId, range),
+    earliestIncomingByWallet(restaurantId, nextRange),
+  ]);
+
+  const isCarriedOver = (t, earliestMap) => {
+    const e = earliestMap.get(String(t.fromMethod));
+    return !e || t.createdAt <= e;
+  };
+
+  return [
+    ...ownTransfers.filter((t) => !isCarriedOver(t, earliestOwn)),
+    ...nextTransfers.filter((t) => isCarriedOver(t, earliestNext)),
+  ];
+}
+
+async function buildWalletsSpec(req) {
+  const q = req.query || {};
+  const monthKey = /^\d{4}-\d{2}$/.test(q.month) ? q.month : businessMonthKey();
+  const range = businessMonthRange(monthKey) || businessMonthRange(businessMonthKey());
+  const restaurantId = new mongoose.Types.ObjectId(req.auth.id);
+
+  const methods = await PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean();
+
+  const collectionRows = await PaymentCollection.aggregate([
+    { $match: { restaurant: restaurantId } },
+    { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'orderDoc' } },
+    { $project: {
+      method: 1, methodName: 1, amount: 1, orderNumber: 1, staffName: 1,
+      relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.createdAt', 0] }, '$createdAt'] },
+    } },
+  ]);
+  const [transfers, expenses] = await Promise.all([
+    transfersForMonth(req.auth.id, monthKey).then((rows) => rows.sort((a, b) => a.createdAt - b.createdAt)),
+    Expense.find({ restaurant: req.auth.id, createdAt: range }).sort({ createdAt: 1 }).lean(),
+  ]);
+
+  // A wallet's current `name` is the live, correctly-spelled label — a transfer or
+  // expense dated months ago may have snapshotted an older, sometimes inconsistently
+  // cased, copy of that name (e.g. a wallet renamed "Evc..." -> "EVC..." along the way).
+  // Resolving by the stable PaymentMethod id first (falling back to the name snapshot
+  // only when the id no longer points to any current wallet — fully deleted) keeps one
+  // wallet's activity together under one row instead of splitting across name variants.
+  const nameById = new Map(methods.map((m) => [String(m._id), m.name]));
+  function walletLabel(methodId, nameSnapshot) {
+    const key = methodId ? String(methodId) : null;
+    if (key && nameById.has(key)) return { key, name: nameById.get(key) };
+    return { key: key || `name:${nameSnapshot || '—'}`, name: nameSnapshot || '—' };
+  }
+
+  const rows = [];
+  for (const c of collectionRows) {
+    if (c.relevantDate < range.$gte || c.relevantDate >= range.$lt) continue;
+    const w = walletLabel(c.method, c.methodName);
+    rows.push({
+      createdAt: c.relevantDate, walletKey: w.key, walletName: w.name, type: 'Collected',
+      reference: c.orderNumber ? `Order #${c.orderNumber}` : 'Debt settlement',
+      amount: c.amount, staffName: c.staffName || '',
+    });
+  }
+  for (const t of transfers) {
+    const from = walletLabel(t.fromMethod, t.fromMethodName);
+    const to = walletLabel(t.toMethod, t.toMethodName);
+    rows.push({
+      createdAt: t.createdAt, walletKey: from.key, walletName: from.name, type: 'Transfer out',
+      reference: `-> ${to.name}`, amount: -t.amount, staffName: t.staffName || '',
+    });
+    rows.push({
+      createdAt: t.createdAt, walletKey: to.key, walletName: to.name, type: 'Transfer in',
+      reference: `<- ${from.name}`, amount: t.amount, staffName: t.staffName || '',
+    });
+  }
+  for (const e of expenses) {
+    const w = walletLabel(e.method, e.methodName);
+    rows.push({
+      createdAt: e.createdAt, walletKey: w.key, walletName: w.name, type: 'Expense',
+      reference: e.categoryName || '', amount: -e.amount, staffName: e.staffName || '',
+    });
+  }
+  rows.sort((a, b) => a.createdAt - b.createdAt);
+
+  // Closing balance per wallet = that month's net activity only — opening is always
+  // $0.00 (see the comment above buildWalletsSpec).
+  const closingByKey = new Map(methods.map((m) => [String(m._id), { name: m.name, total: 0 }]));
+  for (const r of rows) {
+    const cur = closingByKey.get(r.walletKey) || { name: r.walletName, total: 0 };
+    cur.total += r.amount;
+    closingByKey.set(r.walletKey, cur);
+  }
+
+  const sumCollected = rows.filter((r) => r.type === 'Collected').reduce((a, r) => a + r.amount, 0);
+  const sumTransferred = transfers.reduce((a, t) => a + t.amount, 0);
+  const sumExpenses = expenses.reduce((a, e) => a + e.amount, 0);
+  const sumNet = [...closingByKey.values()].reduce((a, v) => a + v.total, 0);
+
+  const summary = [
+    { label: 'Month · Bisha', value: monthKeyLabel(monthKey) },
+    { label: 'Opening balance · Hadhaaga bilowga', value: fmtMoney(0) },
+    { label: 'Collected · La ururiyay', value: fmtMoney(sumCollected) },
+    { label: 'Transferred · La wareejiyay', value: fmtMoney(sumTransferred) },
+    { label: 'Expenses · Kharashaad', value: fmtMoney(sumExpenses) },
+    { label: 'Closing balance · Hadhaaga dhammaadka', value: fmtMoney(sumNet) },
+    { label: 'Transactions · Dhaqdhaqaaqyo', value: String(rows.length) },
+    ...[...closingByKey.values()].map((v) => ({ label: `${v.name} closing`, value: fmtMoney(v.total) })),
+  ];
+
+  return {
+    restaurant: await reportBrand(req.auth.id),
+    reportName: 'Wallets Report', reportNameSo: 'Warbixinta Xisaabaadka',
+    filterLines: [`Month: ${monthKeyLabel(monthKey)}`],
+    summary,
+    columns: WALLETS_COLUMNS,
+    rows,
+    totalsRow: { label: 'TOTAL', values: { amount: sumNet } },
+  };
+}
+
 function specToJson(spec) {
   return {
     reportName: spec.reportName,
@@ -1674,6 +1937,20 @@ router.get('/reports/products.xlsx', requirePermission('reports'), async (req, r
 });
 router.get('/reports/products.pdf', requirePermission('reports'), async (req, res) => {
   const spec = await buildProductsSpec(req);
+  buildPdf(spec, res, reportFilename(spec, 'pdf'));
+});
+
+router.get('/reports/wallets/months', requirePermission('reports'), async (req, res) => {
+  res.json(await listWalletMonths(req.auth.id));
+});
+router.get('/reports/wallets', requirePermission('reports'), async (req, res) => {
+  res.json(specToJson(await buildWalletsSpec(req)));
+});
+router.get('/reports/wallets.xlsx', requirePermission('reports'), async (req, res) => {
+  await sendXlsx(res, await buildWalletsSpec(req));
+});
+router.get('/reports/wallets.pdf', requirePermission('reports'), async (req, res) => {
+  const spec = await buildWalletsSpec(req);
   buildPdf(spec, res, reportFilename(spec, 'pdf'));
 });
 

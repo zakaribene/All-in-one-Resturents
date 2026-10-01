@@ -10,6 +10,12 @@ function channelMeta(channel, tableLabel) {
   return { label: 'Miis ' + tableLabel, Icon: MapPin, bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))', fg: 'var(--accent)' };
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function monthLabel(key) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+  return m ? `${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}` : '';
+}
+
 function timeAgo(date) {
   const mins = Math.round((Date.now() - new Date(date).getTime()) / 60000);
   if (mins < 1) return 'Hadda · now';
@@ -46,7 +52,8 @@ export default function Overview() {
 
   if (!orders || !products) return <div className="text-muted">Loading…</div>;
 
-  const totalWalletBalance = methods.reduce((a, m) => a + (m.balance || 0), 0);
+  const totalWalletBalance = methods.reduce((a, m) => a + (m.monthBalance || 0), 0);
+  const currentMonthLabel = monthLabel(methods[0]?.monthKey);
 
   // The shift runs 3 PM to ~1 AM, so "today" rolls over at 3 PM, not calendar midnight
   // — otherwise an order rung in at 12:30 AM would read as "tomorrow" here while the
@@ -130,10 +137,12 @@ export default function Overview() {
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontWeight: 800, fontSize: 15 }}>Xisaabaadka lacagta · Wallet balances</div>
-              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>Hadhaaga guud ee hab kasta · All-time balance of each payment method</div>
+              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>
+                Hadhaaga bishan · This month's balance of each payment method{currentMonthLabel ? ` — ${currentMonthLabel}` : ''}
+              </div>
             </div>
             <div style={{ fontSize: 13, color: 'var(--muted-2)' }}>
-              Wadarta guud · Total <b style={{ color: 'var(--text)' }}>{money(totalWalletBalance)}</b>
+              Wadarta bishan · This month's total <b style={{ color: 'var(--text)' }}>{money(totalWalletBalance)}</b>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 16 }}>
@@ -150,7 +159,7 @@ export default function Overview() {
                       <Wallet size={16} strokeWidth={2.25} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em' }}>{money(m.balance)}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em' }}>{money(m.monthBalance)}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: t.tone }}>
                     Maanta · Today +{money(m.todayTotal)}
                   </div>

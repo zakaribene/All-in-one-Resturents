@@ -8,6 +8,12 @@ function money(n) {
   return '$' + Number(n || 0).toFixed(2);
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function monthLabel(key) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+  return m ? `${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}` : '';
+}
+
 function timeAgo(date) {
   const mins = Math.round((Date.now() - new Date(date).getTime()) / 60000);
   if (mins < 1) return 'Hadda · now';
@@ -65,8 +71,9 @@ export default function PayMethods() {
     }
   }
 
-  const totalBalance = methods.reduce((a, m) => a + (m.balance || 0), 0);
+  const totalBalance = methods.reduce((a, m) => a + (m.monthBalance || 0), 0);
   const totalToday = methods.reduce((a, m) => a + (m.todayTotal || 0), 0);
+  const currentMonthLabel = monthLabel(methods[0]?.monthKey);
 
   return (
     <div>
@@ -74,8 +81,9 @@ export default function PayMethods() {
         <div>
           <h1 className="page-title" style={{ fontSize: 24 }}>Xisaabaadka · Payment Methods</h1>
           <p className="page-sub">
-            Habab lacag-bixin oo aad adigu abuurato — balance-koodu wuxuu kordhaa dalab kasta oo POS manual ah ·
-            Wallets you define — each balance grows with every manual POS order.
+            Habab lacag-bixin oo aad adigu abuurato — hadhaagu waa kan bishan oo kaliya, wuxuuna 0 ka bilaabmaa 1-da bil kasta ·
+            Wallets you define — the balance shown is this month's only, and starts fresh at $0.00 on the 1st of every month.
+            {currentMonthLabel && <> Hadda · Now: <b>{currentMonthLabel}</b>.</>}
           </p>
         </div>
         <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowAdd(true)}>
@@ -118,7 +126,10 @@ export default function PayMethods() {
                     </button>
                   </div>
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 26, marginTop: 10 }}>{money(m.balance)}</div>
+                <div style={{ fontWeight: 800, fontSize: 26, marginTop: 10 }}>{money(m.monthBalance)}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted-3)', marginTop: 2 }}>
+                  Bishan · {monthLabel(m.monthKey)}
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted-2)', marginTop: 4 }}>
                   Maanta · Today {money(m.todayTotal)} · {m.count} dalab
                 </div>
@@ -130,7 +141,7 @@ export default function PayMethods() {
           </div>
 
           <div style={{ display: 'flex', gap: 24, marginBottom: 26, flexWrap: 'wrap', fontSize: 13, color: 'var(--muted-2)' }}>
-            <span>Wadarta guud · Total balance <b style={{ color: 'var(--text)' }}>{money(totalBalance)}</b></span>
+            <span>Wadarta bishan · This month's total <b style={{ color: 'var(--text)' }}>{money(totalBalance)}</b></span>
             <span>Maanta guud · Collected today <b style={{ color: 'var(--text)' }}>{money(totalToday)}</b></span>
           </div>
 

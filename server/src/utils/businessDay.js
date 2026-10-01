@@ -48,4 +48,45 @@ function businessDayRange(fromStr, toStr) {
   return { from, to, range: (range.$gte || range.$lte) ? range : null };
 }
 
-module.exports = { BUSINESS_DAY_START_HOUR, businessDayStart, businessDayRange };
+// "YYYY-MM" label of the business month an instant falls in — the calendar month of
+// its business-day date (see businessDayStart). This is how "which accounting month is
+// it right now" is determined for wallet balances and the Reports month filter: the 1st
+// of the month doesn't flip over until that day's own 3 PM business-day boundary passes.
+function businessMonthKey(at = new Date()) {
+  const start = businessDayStart(at);
+  const m = new Date(start.getTime() + 3 * 60 * 60 * 1000);
+  return `${m.getUTCFullYear()}-${pad2(m.getUTCMonth() + 1)}`;
+}
+
+// Mongo range `{$gte, $lt}` covering one accounting month ("YYYY-MM", as returned by
+// businessMonthKey): from 3 PM Mogadishu on the 1st through 2:59:59.999 PM on the 1st of
+// the following month — so a month boundary lines up exactly with businessMonthKey's own
+// rollover instant, and wraps correctly from December into the next January. Returns null
+// for a malformed key instead of throwing, since callers may pass this straight through
+// from a query string.
+function businessMonthRange(monthKey) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(monthKey || ''));
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]);
+  const start = new Date(`${m[1]}-${m[2]}-01T${pad2(BUSINESS_DAY_START_HOUR)}:00:00.000+03:00`);
+  const nextY = mo === 12 ? y + 1 : y;
+  const nextMo = mo === 12 ? 1 : mo + 1;
+  const end = new Date(`${nextY}-${pad2(nextMo)}-01T${pad2(BUSINESS_DAY_START_HOUR)}:00:00.000+03:00`);
+  return { $gte: start, $lt: end };
+}
+
+// "YYYY-MM" shifted by `delta` whole months (negative goes backward), wrapping the year
+// correctly in either direction. Returns null for a malformed key.
+function addMonthsToKey(monthKey, delta) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(monthKey || ''));
+  if (!m) return null;
+  let total = Number(m[1]) * 12 + (Number(m[2]) - 1) + delta;
+  const y = Math.floor(total / 12);
+  const mo = ((total % 12) + 12) % 12;
+  return `${y}-${pad2(mo + 1)}`;
+}
+
+module.exports = {
+  BUSINESS_DAY_START_HOUR, businessDayStart, businessDayRange,
+  businessMonthKey, businessMonthRange, addMonthsToKey,
+};
