@@ -48,7 +48,18 @@ export default function Overview() {
 
   const totalWalletBalance = methods.reduce((a, m) => a + (m.balance || 0), 0);
 
-  const isToday = (d) => !!d && new Date(d).toDateString() === new Date().toDateString();
+  // The shift runs 3 PM to ~1 AM, so "today" rolls over at 3 PM, not calendar midnight
+  // — otherwise an order rung in at 12:30 AM would read as "tomorrow" here while the
+  // same shift that started at 3 PM is still open. Matches the server's businessDay.js
+  // (reportRange, wallet Today) so this figure never disagrees with the Sales Report.
+  const businessDayStart = (at = new Date()) => {
+    const d = new Date(at);
+    if (d.getHours() < 15) d.setDate(d.getDate() - 1);
+    d.setHours(15, 0, 0, 0);
+    return d;
+  };
+  const todayStart = businessDayStart();
+  const isToday = (d) => !!d && new Date(d) >= todayStart;
   const isPaid = (o) => o.payment?.status === 'paid';
   // "Orders today" (order volume) is about when orders were placed — createdAt.
   const todayOrders = orders.filter((o) => isToday(o.createdAt));

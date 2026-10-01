@@ -30,6 +30,7 @@ const tabaarak = require('../utils/tabaarak');
 const { buildXlsx, buildPdf, fmtMoney, fmtDate } = require('../utils/reportExport');
 const { logStoreActivity, MODULE_LABEL } = require('../utils/activityLog');
 const { upload } = require('../utils/upload');
+const { businessDayStart, businessDayRange } = require('../utils/businessDay');
 
 const router = express.Router();
 router.use(requireRestaurantOrStaff);
@@ -842,15 +843,9 @@ function mapMethod(m, agg) {
 
 router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']), async (req, res) => {
   const methods = await PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean();
-  // Fixed +03:00 (Africa/Mogadishu) midnight, not the server process's ambient
-  // timezone — same reasoning as reportRange() in the Reports section below. Shifting
-  // "now" by the offset and reading it back with UTC getters gives today's Mogadishu
-  // calendar date regardless of what timezone the host itself happens to be in.
-  const mNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
-  const y = mNow.getUTCFullYear();
-  const mo = String(mNow.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(mNow.getUTCDate()).padStart(2, '0');
-  const start = new Date(`${y}-${mo}-${d}T00:00:00.000+03:00`);
+  // "Today" starts at this business's shift boundary (3 PM), not calendar midnight —
+  // see server/src/utils/businessDay.js.
+  const start = businessDayStart();
 
   // A wallet that's been transferred OUT of today no longer holds whatever it collected
   // before that transfer — it's already moved on to wherever the transfer sent it. So
@@ -1272,7 +1267,7 @@ function mapExpense(e) {
 
 router.get('/expenses', requirePermission('expenses'), async (req, res) => {
   const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
-  const startDay = new Date(); startDay.setHours(0, 0, 0, 0);
+  const startDay = businessDayStart();
   const startMonth = new Date(); startMonth.setDate(1); startMonth.setHours(0, 0, 0, 0);
   const [methods, categories, rows, agg] = await Promise.all([
     PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean(),
@@ -1360,22 +1355,10 @@ router.delete('/expenses/:id', requirePermission('expenses'), async (req, res) =
 // ---- Reports (Sales + Expense, filterable, Excel / PDF export) ----
 const CHANNEL_LABEL = { table: 'Table', takeaway: 'Takeaway', online: 'Online', pos: 'POS' };
 
-// Anchored to a hardcoded +03:00 (Africa/Mogadishu, no DST) instead of relying on the
-// server process's own local timezone — that used to work only by accident, when the
-// host happened to be set to Mogadishu time. The moment the server runs anywhere else
-// (most hosts default to UTC), "today" here silently drifts up to 3 hours from what the
-// wallet Today total and Revenue today mean (see isToday() in Overview.jsx, which uses
-// the *browser's* local time — Mogadishu, for this app's actual users), and a paid order
-// near midnight starts falling on the wrong side of the boundary in one place but not
-// the other. Explicit offset makes the boundary correct regardless of host timezone.
-function reportRange(q) {
-  const from = String(q.from || '').slice(0, 10);
-  const to = String(q.to || '').slice(0, 10);
-  const range = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) range.$gte = new Date(from + 'T00:00:00.000+03:00');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) range.$lte = new Date(to + 'T23:59:59.999+03:00');
-  return { from, to, range: (range.$gte || range.$lte) ? range : null };
-}
+// "Today" (and every date-range picker) runs on the restaurant's business day, not the
+// calendar day — see server/src/utils/businessDay.js for why (the shift runs 3 PM to
+// ~1 AM, so a calendar-midnight boundary split one night into two different days).
+const reportRange = (q) => businessDayRange(q.from, q.to);
 
 async function reportBrand(id) {
   const r = await Restaurant.findById(id).select('name city plan hue logoUrl').lean();
@@ -1936,17 +1919,13 @@ const STORE_ACTIVITY_COLUMNS = [
   { header: 'Description', headerSo: 'Faahfaahin', key: 'description', w: 3, width: 44, wrap: true },
 ];
 
-// Same fixed +03:00 boundary reasoning as reportRange() above.
+// Same business-day boundary as reportRange() above.
 function activityLogFilter(req) {
   const q = req.query || {};
   const filter = { restaurant: req.auth.id };
   if (q.module && q.module !== 'all') filter.module = q.module;
-  const from = String(q.from || '').slice(0, 10);
-  const to = String(q.to || '').slice(0, 10);
-  const createdAt = {};
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) createdAt.$gte = new Date(from + 'T00:00:00.000+03:00');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) createdAt.$lte = new Date(to + 'T23:59:59.999+03:00');
-  if (createdAt.$gte || createdAt.$lte) filter.createdAt = createdAt;
+  const { from, to, range } = businessDayRange(q.from, q.to);
+  if (range) filter.createdAt = range;
   return { filter, from, to };
 }
 
