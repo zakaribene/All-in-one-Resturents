@@ -223,7 +223,7 @@ export default function PayTransfer() {
                     {m.name}
                     {m.status !== 'active' && <span style={{ color: 'var(--danger)', fontSize: 11, marginLeft: 6 }}>⏸</span>}
                   </div>
-                  <div style={{ fontWeight: 800, fontSize: 15 }}>{money(m.balance)}</div>
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>{money(m.monthBalance)}</div>
                 </div>
               ))}
             </div>

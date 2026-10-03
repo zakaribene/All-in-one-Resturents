@@ -902,37 +902,7 @@ router.get('/payment-methods', requireAnyPermission(['paymethods', 'overview']),
   // the same PaymentCollection/PaymentTransfer/Expense ledgers every time, so last month's
   // activity stays fully intact and queryable (see buildWalletsSpec / Reports' "Wallets"
   // tab) while this figure simply never counts it.
-  const monthRange = businessMonthRange(businessMonthKey());
-  const monthCollectedById = new Map();
-  for (const row of rows) {
-    if (row.relevantDate >= monthRange.$gte && row.relevantDate < monthRange.$lt) {
-      const key = String(row.method);
-      monthCollectedById.set(key, (monthCollectedById.get(key) || 0) + row.amount);
-    }
-  }
-  const [monthTransfers, expensesAgg] = await Promise.all([
-    transfersForMonth(req.auth.id, businessMonthKey()),
-    Expense.aggregate([
-      { $match: { restaurant: restaurantId, createdAt: monthRange } },
-      { $group: { _id: '$method', total: { $sum: '$amount' } } },
-    ]),
-  ]);
-  const transfersInById = new Map();
-  const transfersOutById = new Map();
-  for (const t of monthTransfers) {
-    const fromKey = String(t.fromMethod), toKey = String(t.toMethod);
-    transfersInById.set(toKey, (transfersInById.get(toKey) || 0) + t.amount);
-    transfersOutById.set(fromKey, (transfersOutById.get(fromKey) || 0) + t.amount);
-  }
-  const expensesById = new Map(expensesAgg.map((r) => [String(r._id), r.total]));
-  const monthBalanceById = new Map(methods.map((m) => {
-    const key = String(m._id);
-    const net = (monthCollectedById.get(key) || 0)
-      + (transfersInById.get(key) || 0)
-      - (transfersOutById.get(key) || 0)
-      - (expensesById.get(key) || 0);
-    return [key, net];
-  }));
+  const monthBalanceById = await computeMonthBalances(req.auth.id, methods);
 
   res.json(methods.map(m => mapMethod(m, byId.get(String(m._id)), monthBalanceById.get(String(m._id)))));
 });
@@ -999,10 +969,12 @@ router.get('/payment-transfers', requirePermission('transfers'), async (req, res
     PaymentMethod.find({ restaurant: req.auth.id }).sort({ createdAt: 1 }).lean(),
     PaymentTransfer.find({ restaurant: req.auth.id }).sort({ createdAt: -1 }).limit(limit).lean(),
   ]);
+  const monthBalanceById = await computeMonthBalances(req.auth.id, methods);
   res.json({
     methods: methods.map(m => ({
       id: m._id, name: m.name, status: m.status,
       balance: Math.round((m.balance || 0) * 100) / 100,
+      monthBalance: monthBalanceById.get(String(m._id)) || 0,
     })),
     transfers: rows.map(mapTransfer),
   });
@@ -1330,10 +1302,12 @@ router.get('/expenses', requirePermission('expenses'), async (req, res) => {
       } },
     ]),
   ]);
+  const monthBalanceById = await computeMonthBalances(req.auth.id, methods);
   res.json({
     methods: methods.map(m => ({
       id: m._id, name: m.name, status: m.status,
       balance: Math.round((m.balance || 0) * 100) / 100,
+      monthBalance: monthBalanceById.get(String(m._id)) || 0,
     })),
     categories: categories.map(c => ({ id: c._id, name: c.name })),
     expenses: rows.map(mapExpense),
@@ -1782,6 +1756,56 @@ async function transfersForMonth(restaurantId, monthKey) {
     ...ownTransfers.filter((t) => !isCarriedOver(t, earliestOwn)),
     ...nextTransfers.filter((t) => isCarriedOver(t, earliestNext)),
   ];
+}
+
+// Shared "this month" wallet balance figure — same computation used by the Dashboard,
+// Payment Methods, Transfer and Expenses pages so they never disagree with each other.
+// See the note above mapMethod() for what this figure means vs. the all-time `balance`.
+async function computeMonthBalances(restaurantId, methods) {
+  const restaurantObjId = new mongoose.Types.ObjectId(restaurantId);
+  const monthKey = businessMonthKey();
+  const monthRange = businessMonthRange(monthKey);
+
+  const collectionRows = await PaymentCollection.aggregate([
+    { $match: { restaurant: restaurantObjId } },
+    { $lookup: { from: 'orders', localField: 'order', foreignField: '_id', as: 'orderDoc' } },
+    { $project: {
+      method: 1, amount: 1,
+      relevantDate: { $ifNull: [{ $arrayElemAt: ['$orderDoc.createdAt', 0] }, '$createdAt'] },
+    } },
+  ]);
+  const monthCollectedById = new Map();
+  for (const row of collectionRows) {
+    if (row.relevantDate >= monthRange.$gte && row.relevantDate < monthRange.$lt) {
+      const key = String(row.method);
+      monthCollectedById.set(key, (monthCollectedById.get(key) || 0) + row.amount);
+    }
+  }
+
+  const [monthTransfers, expensesAgg] = await Promise.all([
+    transfersForMonth(restaurantId, monthKey),
+    Expense.aggregate([
+      { $match: { restaurant: restaurantObjId, createdAt: monthRange } },
+      { $group: { _id: '$method', total: { $sum: '$amount' } } },
+    ]),
+  ]);
+  const transfersInById = new Map();
+  const transfersOutById = new Map();
+  for (const t of monthTransfers) {
+    const fromKey = String(t.fromMethod), toKey = String(t.toMethod);
+    transfersInById.set(toKey, (transfersInById.get(toKey) || 0) + t.amount);
+    transfersOutById.set(fromKey, (transfersOutById.get(fromKey) || 0) + t.amount);
+  }
+  const expensesById = new Map(expensesAgg.map((r) => [String(r._id), r.total]));
+
+  return new Map(methods.map((m) => {
+    const key = String(m._id);
+    const net = (monthCollectedById.get(key) || 0)
+      + (transfersInById.get(key) || 0)
+      - (transfersOutById.get(key) || 0)
+      - (expensesById.get(key) || 0);
+    return [key, Math.round(net * 100) / 100];
+  }));
 }
 
 async function buildWalletsSpec(req) {
