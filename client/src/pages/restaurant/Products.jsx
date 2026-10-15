@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Search } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 
@@ -15,6 +15,7 @@ export default function Products() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,11 @@ export default function Products() {
     const c = categories.find((c) => c.id === id);
     return c ? `${c.en} · ${c.so}` : '';
   };
-  const visible = products.filter((p) => filter === 'all' || p.category === filter);
+  const q = query.trim().toLowerCase();
+  const visible = products.filter((p) => (
+    (filter === 'all' || p.category === filter) &&
+    (!q || p.en.toLowerCase().includes(q) || p.so.toLowerCase().includes(q))
+  ));
 
   return (
     <div>
@@ -62,9 +67,15 @@ export default function Products() {
           <h1 className="page-title" style={{ fontSize: 24 }}>Cuntooyinka · Products</h1>
           <p className="page-sub">Diiwaan geli oo maamul · Add and manage your menu.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={!categories.length}>
-          <span style={{ fontSize: 17, lineHeight: 1 }}>+</span> Ku dar cunto · Add product
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ position: 'relative', minWidth: 220 }}>
+            <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+            <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi cunto… · Search products…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={!categories.length} style={{ whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 17, lineHeight: 1 }}>+</span> Ku dar cunto · Add product
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
@@ -77,6 +88,9 @@ export default function Products() {
       {loading && <div className="text-muted">Loading…</div>}
       {!categories.length && !loading && (
         <div className="card card-pad text-muted">Marka hore ku dar qayb · Add a category first, then add products.</div>
+      )}
+      {!!categories.length && !loading && !visible.length && !!products.length && (
+        <div className="card card-pad text-muted">Wax lama helin · No products match your search.</div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
