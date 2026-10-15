@@ -73,7 +73,7 @@ function CustomerStatementModal({ customer, orders, restaurant, onClose, onViewO
             >
               <span>#{o.number}</span>
               <span>{fullDate(o.createdAt)}</span>
-              <span style={{ textAlign: 'right' }}>{money(o.total)}</span>
+              <span style={{ textAlign: 'right' }}>{money(o.total - (o.payment?.paidAmount || 0))}</span>
             </button>
           ))}
         </div>
@@ -98,8 +98,10 @@ function CustomerStatementModal({ customer, orders, restaurant, onClose, onViewO
 // this one and keep the rest open — instead of paying down the customer's whole running
 // balance. See POST /orders/:id/settle-debt.
 function SettleDebtOrderModal({ order, onClose, onSettled, addToast }) {
+  const remaining = Math.round((order.total - (order.payment?.paidAmount || 0)) * 100) / 100;
   const [methods, setMethods] = useState(null);
   const [methodId, setMethodId] = useState(null);
+  const [amount, setAmount] = useState(String(remaining));
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -111,12 +113,20 @@ function SettleDebtOrderModal({ order, onClose, onSettled, addToast }) {
     });
   }, []);
 
+  const amountNum = Math.round((Number(amount) || 0) * 100) / 100;
+  const canSubmit = methodId && amountNum > 0 && amountNum <= remaining + 0.001;
+
   async function submit() {
-    if (!methodId || busy) return;
+    if (!canSubmit || busy) return;
     setBusy(true);
     try {
-      await api.post(`/restaurant/orders/${order.id}/settle-debt`, { methodId, note: note.trim() });
-      addToast({ title: 'Dalabka waa la bixiyay · Order paid off', body: `#${order.number} · ${money(order.total)}`, tone: 'success' });
+      await api.post(`/restaurant/orders/${order.id}/settle-debt`, { methodId, amount: amountNum, note: note.trim() });
+      const full = amountNum >= remaining - 0.001;
+      addToast({
+        title: full ? 'Dalabka waa la bixiyay · Order paid off' : 'Qayb ayaa la bixiyay · Partial payment recorded',
+        body: full ? `#${order.number} · ${money(amountNum)}` : `#${order.number} · ${money(amountNum)} — ${money(remaining - amountNum)} ayaa hadhay · left`,
+        tone: 'success',
+      });
       await onSettled();
       onClose();
     } catch (err) {
@@ -129,7 +139,18 @@ function SettleDebtOrderModal({ order, onClose, onSettled, addToast }) {
   return (
     <Modal onClose={onClose} width={380}>
       <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Bixi dalabkan · Pay this order</div>
-      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>Order #{order.number} · {money(order.total)}</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>
+        Order #{order.number} · {money(order.total)}
+        {remaining < order.total && <> — {money(remaining)} ayaa hadhay · left</>}
+      </div>
+      <label className="field-label">Qadarka · Amount ($)</label>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input
+          type="number" min="0" step="0.01" max={remaining} className="field-input" style={{ flex: 1 }}
+          value={amount} onChange={(e) => setAmount(e.target.value)}
+        />
+        <button className="btn-outline btn-sm" onClick={() => setAmount(String(remaining))} title="Dhammaan · Full amount">Dhammaan</button>
+      </div>
       {methods === null && <div className="text-muted" style={{ padding: '4px 0 16px' }}>Loading…</div>}
       {!!methods?.length && (
         <>
@@ -152,7 +173,7 @@ function SettleDebtOrderModal({ order, onClose, onSettled, addToast }) {
       />
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
-        <button className="btn btn-primary" disabled={busy || !methodId} onClick={submit}>{busy ? 'Diraya…' : 'Xaqiiji · Confirm'}</button>
+        <button className="btn btn-primary" disabled={busy || !canSubmit} onClick={submit}>{busy ? 'Diraya…' : `Xaqiiji ${amountNum > 0 ? money(amountNum) : ''} · Confirm`}</button>
       </div>
     </Modal>
   );
@@ -301,6 +322,8 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
             {!unpaidOrders.length && <div className="text-muted" style={{ fontSize: 12.5 }}>Wax dalab ah lama helin · No debt orders.</div>}
             {unpaidOrders.map((o) => {
               const editable = canDebt;
+              const remaining = Math.round((o.total - (o.payment?.paidAmount || 0)) * 100) / 100;
+              const partial = remaining < o.total - 0.001;
               return (
                 <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border-soft)' }}>
                   <button
@@ -311,8 +334,8 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
                       border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
                     }}
                   >
-                    <span>#{o.number} · {timeAgo(o.createdAt)}</span>
-                    <span style={{ fontWeight: 700 }}>{money(o.total)}</span>
+                    <span>#{o.number} · {timeAgo(o.createdAt)}{partial && <span style={{ color: 'var(--muted-3)' }}> · {money(o.total)}</span>}</span>
+                    <span style={{ fontWeight: 700 }}>{money(remaining)}</span>
                   </button>
                   <button
                     title="Bixi dalabkan · Pay this order" onClick={() => setSettleOrder(o)}

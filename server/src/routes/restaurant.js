@@ -1216,14 +1216,25 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
 
 // Settles ONE specific debt order by itself, instead of paying down the customer's whole
 // running balance — e.g. the customer wants to clear just today's order and keep the
-// rest open for later. Reduces the balance by exactly this order's total (not the whole
-// balance) and marks only this order paid, unlike /customers/:id/payments above, which
-// only flips orders to paid once the entire balance clears to zero.
+// rest open for later. Reduces the balance by exactly the amount settled now (not
+// necessarily the whole order) and marks only this order paid once it's fully covered,
+// unlike /customers/:id/payments above, which only flips orders to paid once the entire
+// balance clears to zero. Also accepts a partial amount — e.g. the customer hands over
+// part of what one order cost and will pay the rest later — tracked on
+// order.payment.paidAmount; the order stays open (not "paid") until that reaches the
+// order's total, and the Customers page shows the remainder still owed on it.
 router.post('/orders/:id/settle-debt', requirePermission('customers'), async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (!order.debtor) return res.status(400).json({ error: 'This order is not charged to a customer account' });
   if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Already paid' });
+
+  const remaining = Math.round((order.total - (order.payment.paidAmount || 0)) * 100) / 100;
+  const amount = req.body?.amount != null ? Math.round((Number(req.body.amount) || 0) * 100) / 100 : remaining;
+  if (!(amount > 0)) return res.status(400).json({ error: 'Qadarka waa inuu ka weyn yahay 0 · Amount must be greater than 0' });
+  if (amount > remaining + 0.001) {
+    return res.status(400).json({ error: `Qadarku kama badnaan karo hadhaaga dalabka ${fmtMoney(remaining)} · Amount cannot exceed what's left on this order` });
+  }
 
   const methodId = req.body?.methodId;
   if (!methodId || !mongoose.Types.ObjectId.isValid(methodId)) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
@@ -1235,14 +1246,17 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
 
   const collector = await resolveCollector(req);
-  const amount = order.total;
-
-  order.payment.status = 'paid';
-  order.payment.paidAt = new Date();
-  order.payment.method = 'pay_at_table';
-  order.payment.manualMethod = method._id;
-  order.payment.manualMethodName = method.name;
-  order.payment.collectedByName = collector.name;
+  const paidAmount = Math.round(((order.payment.paidAmount || 0) + amount) * 100) / 100;
+  const fullySettled = paidAmount >= order.total - 0.001;
+  order.payment.paidAmount = paidAmount;
+  if (fullySettled) {
+    order.payment.status = 'paid';
+    order.payment.paidAt = new Date();
+    order.payment.method = 'pay_at_table';
+    order.payment.manualMethod = method._id;
+    order.payment.manualMethodName = method.name;
+    order.payment.collectedByName = collector.name;
+  }
   await order.save();
 
   customer.balance = Math.round((customer.balance - amount) * 100) / 100;
@@ -1265,7 +1279,9 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
 
   logStoreActivity(req, {
     module: 'customers', action: 'Update',
-    message: `${customer.name} paid off order #${order.number} (${fmtMoney(amount)}, ${method.name})`,
+    message: fullySettled
+      ? `${customer.name} paid off order #${order.number} (${fmtMoney(amount)}, ${method.name})`
+      : `${customer.name} paid ${fmtMoney(amount)} toward order #${order.number} (${fmtMoney(remaining - amount)} left, ${method.name})`,
   });
 
   const payload = mapOrder({ ...order.toObject(), debtor: customer });
