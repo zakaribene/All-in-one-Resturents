@@ -234,7 +234,7 @@ export default function Sms() {
   const previewSample = selectedPhones.slice(0, 3);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 18, alignItems: 'start' }}>
+    <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 18, alignItems: 'start' }}>
       <div>
         <div style={{ marginBottom: 22 }}>
           <h1 className="page-title" style={{ fontSize: 24 }}>SMS</h1>
@@ -243,13 +243,13 @@ export default function Sms() {
 
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>Taariikhda · History</div>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+          <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
             <div>Phone</div><div>Message</div><div>Status</div><div>Time</div><div style={{ textAlign: 'right' }}>Action</div>
           </div>
           {historyPageRows.map((l) => {
             const s = STATUS_META[l.status];
             return (
-              <div key={l.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+              <div key={l.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
                 <div className="mono">{l.phone}</div>
                 <div style={{ color: 'var(--muted-5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</div>
                 <div>

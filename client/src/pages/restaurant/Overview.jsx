@@ -111,7 +111,7 @@ export default function Overview() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 22 }}>
+      <div className="rgrid-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 22 }}>
         {stats.map((st, i) => (
           <div
             className="stat-card" key={i} onClick={st.onClick}
@@ -173,7 +173,7 @@ export default function Overview() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+      <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
         <div className="card card-pad">
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 2 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Dalabyada xaaladdooda · Orders by status</div>

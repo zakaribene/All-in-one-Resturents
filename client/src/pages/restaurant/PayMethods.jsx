@@ -147,12 +147,12 @@ export default function PayMethods() {
 
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>Dhaqdhaqaaqii ugu dambeeyay · Recent collections</div>
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr 1.4fr 1.2fr .9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+            <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr 1.4fr 1.2fr .9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
               <div>Order</div><div>Amount</div><div>Method</div><div>Staff</div><div style={{ textAlign: 'right' }}>When</div>
             </div>
             {!collections.length && <div className="text-muted" style={{ padding: 24, textAlign: 'center' }}>Weli waxba lama qaban · Nothing collected yet.</div>}
             {collections.map((c) => (
-              <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr 1.4fr 1.2fr .9fr', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+              <div key={c.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr 1.4fr 1.2fr .9fr', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
                 <div className="mono" style={{ fontWeight: 800 }}>#{c.orderNumber}</div>
                 <div style={{ fontWeight: 800 }}>{money(c.amount)}</div>
                 <div>{c.methodName}</div>

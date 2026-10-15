@@ -444,12 +444,12 @@ export default function Customers() {
 
       {customers && !!customers.length && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 40px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+          <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 40px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
             <div>Macmiil · Customer</div><div>Lambar · Phone</div><div style={{ textAlign: 'right' }}>Wadarta · Balance</div><div />
           </div>
           {customers.map((c) => (
             <button
-              key={c.id} onClick={() => setSelectedId(c.id)}
+              key={c.id} onClick={() => setSelectedId(c.id)} className="rgrid-table"
               style={{
                 display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 40px', gap: 12, padding: '13px 20px',
                 borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13, width: '100%', textAlign: 'left',

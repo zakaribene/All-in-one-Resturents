@@ -46,7 +46,7 @@ export default function Overview() {
 
       {data && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
+          <div className="rgrid-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
             {data.stats.map((st, i) => {
               const Icon = STAT_ICON[i] || Store;
               const c = toneColor(st.tone);
@@ -108,7 +108,7 @@ export default function Overview() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
+          <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
             <div className="card card-pad">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                 <BarChart3 size={15} strokeWidth={2.25} color="var(--muted-2)" />

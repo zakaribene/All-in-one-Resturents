@@ -54,7 +54,7 @@ export default function QrTab() {
         <p className="page-sub">QR kursi/miis kasta · A code per table. Scan without a table still works (takeaway).</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 22, alignItems: 'start' }}>
+      <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 22, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted-3)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 2 }}>Miisaska · Tables</div>
           {realTables.map((t) => (

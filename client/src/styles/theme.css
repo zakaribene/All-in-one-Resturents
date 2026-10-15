@@ -309,33 +309,33 @@ input, select, textarea { font-family: inherit; }
 }
 
 @media (max-width: 760px) {
-  /* Card / stat / form-and-aside grids collapse to a single column.
-     auto-fill / auto-fit tracks are already fluid, so leave them alone. */
-  .main-area [style*="grid-template-columns: repeat"]:not([style*="auto-f"]),
-  .main-area [style*="grid-template-columns: minmax(0, 1fr) minmax(0,"],
-  .main-area [style*="grid-template-columns: 1fr 360px"],
-  .main-area [style*="grid-template-columns: 1fr 380px"],
-  .main-area [style*="grid-template-columns: 1.4fr 1fr"],
-  .main-area [style*="grid-template-columns: 300px 1fr"],
-  .main-area [style*="grid-template-columns: 1fr 1fr"] {
+  /* Explicit responsive grid roles — set via className alongside the inline
+     style that defines the desktop column template, so the mobile override
+     doesn't depend on guessing which literal column-width string a page
+     happens to use. */
+  .rgrid-split {
     grid-template-columns: 1fr !important;
+  }
+  .rgrid-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
   }
 
   /* Fake-table blocks (header row + data rows sharing a fractional track
      list): keep the columns, but let the block scroll sideways instead of
-     crushing every cell. Overrides the inline `overflow: hidden` wrapper. */
+     crushing every cell. Overrides the inline `overflow: hidden` wrapper.
+     This selector stays generic (any "fr "-based grid in a rounded,
+     clipped card) rather than classed, since it already covers every
+     current and future table without maintenance. */
   .main-area div[style*="border-radius: 16px"][style*="overflow: hidden"]:has(> [style*="grid-template-columns:"][style*="fr "]) {
     overflow-x: auto !important;
   }
-  .main-area [style*="grid-template-columns:"][style*="fr .8fr"],
-  .main-area [style*="grid-template-columns:"][style*="fr 1.1fr"],
-  .main-area [style*="grid-template-columns:"][style*="fr 1.2fr 1"],
-  .main-area [style*="grid-template-columns:"][style*="fr 1.4fr 1"],
-  .main-area [style*="grid-template-columns:"][style*="fr 1.5fr 2"],
-  .main-area [style*="grid-template-columns:"][style*="fr 2.1fr"],
-  .main-area [style*="grid-template-columns:"][style*="fr 2.2fr"],
-  .main-area [style*="grid-template-columns:"][style*="fr 1.8fr"],
-  .main-area [style*="grid-template-columns:"][style*="40px"] {
+  /* Explicit escape hatch for table wrappers whose rounded/clipped styling
+     comes from a CSS class (e.g. `.card`) rather than inline style, so the
+     generic selector above can't see it. */
+  .rtable-wrap {
+    overflow-x: auto !important;
+  }
+  .rgrid-table {
     min-width: 660px;
   }
 }

@@ -38,7 +38,7 @@ export default function Notifications() {
         <p className="page-sub">U dir dhammaan ama hal maqaayad · Broadcast to all or a single venue.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
         <div className="card card-pad">
           <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted-4)', marginBottom: 8 }}>Cida loo dirayo · Send to</div>
           <div style={{ display: 'flex', gap: 4, background: 'var(--border-soft)', padding: 4, borderRadius: 10, marginBottom: 20 }}>

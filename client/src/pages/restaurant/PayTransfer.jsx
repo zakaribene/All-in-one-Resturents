@@ -109,7 +109,7 @@ export default function PayTransfer() {
       )}
 
       {!loading && activeMethods.length >= 2 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 360px)', gap: 20, alignItems: 'start' }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 360px)', gap: 20, alignItems: 'start' }}>
           {/* ---- Transfer form ---- */}
           <form onSubmit={submit} className="card card-pad">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 15, marginBottom: 18 }}>
@@ -235,11 +235,11 @@ export default function PayTransfer() {
         <>
           <div style={{ fontWeight: 800, fontSize: 15, margin: '28px 0 10px' }}>Wareejinnadii ugu dambeeyay · Recent transfers</div>
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.4fr 1fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+            <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.4fr 1fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
               <div>Wareejin · Transfer</div><div>Qadar · Amount</div><div>Qofka · By</div><div style={{ textAlign: 'right' }}>Goorma · When</div>
             </div>
             {transfers.map((t) => (
-              <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.4fr 1fr', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+              <div key={t.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.4fr 1fr', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700 }}>{t.fromMethodName}</span>
                   <ArrowRight size={13} strokeWidth={2.5} color="var(--muted-3)" />

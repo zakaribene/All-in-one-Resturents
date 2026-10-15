@@ -70,11 +70,11 @@ export default function Staff() {
 
       {!loading && !!staff.length && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2.2fr .8fr 1fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+          <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2.2fr .8fr 1fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
             <div>Name</div><div>Role</div><div>Permissions</div><div>Status</div><div style={{ textAlign: 'right' }}>Action</div>
           </div>
           {staff.map((s) => (
-            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2.2fr .8fr 1fr', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+            <div key={s.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2.2fr .8fr 1fr', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{s.name}</div>
                 <div className="mono" style={{ fontSize: 11, color: 'var(--muted-3)' }}>@{s.username}</div>
@@ -213,7 +213,7 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
         />
 
         <label className="field-label">Boggaga uu geli karo · Pages this staff account can access</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, border: '1px solid var(--border-soft)', borderRadius: 10, padding: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, border: '1px solid var(--border-soft)', borderRadius: 10, padding: 12 }}>
           {NAV_PAGES.map((p) => (
             <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
               <input type="checkbox" checked={permissions.includes(p.id)} onChange={() => togglePage(p.id)} />

@@ -354,14 +354,14 @@ export default function Orders() {
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '.8fr .9fr 1.8fr 1fr .7fr 1.1fr 2.4fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+        <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '.8fr .9fr 1.8fr 1fr .7fr 1.1fr 2.4fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
           <div>Order</div><div>Source</div><div>Items</div><div>Phone</div><div>Total</div><div>Status</div><div style={{ textAlign: 'right' }}>Actions</div>
         </div>
         {pageRows.map((o) => {
           const m = channelMeta(o.channel, o.tableLabel);
           const s = STATUS_META[o.status];
           return (
-            <div key={o.id} style={{ display: 'grid', gridTemplateColumns: '.8fr .9fr 1.8fr 1fr .7fr 1.1fr 2.4fr', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+            <div key={o.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '.8fr .9fr 1.8fr 1fr .7fr 1.1fr 2.4fr', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
               <div>
                 <div className="mono" style={{ fontWeight: 800 }}>#{o.number}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>{timeAgo(o.createdAt)}</div>

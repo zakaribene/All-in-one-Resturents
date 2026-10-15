@@ -123,15 +123,15 @@ export default function Restaurants() {
 
       {error && <div style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</div>}
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '14px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+      <div className="card rtable-wrap" style={{ overflow: 'hidden' }}>
+        <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '14px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
           <div>Restaurant</div><div>Owner</div><div>Plan</div><div>Orders</div><div>Status</div><div>Last seen</div><div style={{ textAlign: 'right' }}>Actions</div>
         </div>
         {loading && <div style={{ padding: 20 }} className="text-muted">Loading…</div>}
         {!loading && list.map((r) => {
           const seen = lastSeen(r.lastSeenAt);
           return (
-            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '15px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center' }}>
+            <div key={r.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '15px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 11, background: `hsl(${r.hue} 65% 95%)`, color: `hsl(${r.hue} 55% 42%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, flex: '0 0 auto' }}>{initials(r.name)}</div>
                 <div style={{ lineHeight: 1.25, minWidth: 0 }}>
@@ -250,7 +250,7 @@ function AddRestaurantModal({ onClose, onCreated }) {
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 18 }}>Diiwaan geli maqaayad · Add restaurant</div>
         <label className="field-label">Magaca maqaayada · Restaurant name</label>
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.name} onChange={set('name')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="field-label">Magaalada · City</label>
             <input className="field-input" style={{ marginBottom: 14 }} value={form.city} onChange={set('city')} />
@@ -260,7 +260,7 @@ function AddRestaurantModal({ onClose, onCreated }) {
             <input className="field-input" style={{ marginBottom: 14 }} value={form.ownerName} onChange={set('ownerName')} />
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="field-label">Isticmaale · Username</label>
             <input className="field-input" style={{ marginBottom: 14 }} required value={form.username} onChange={set('username')} />
@@ -320,7 +320,7 @@ function EditRestaurantModal({ restaurant, onClose, onSaved }) {
 
         <label className="field-label">Magaca maqaayada · Restaurant name</label>
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.name} onChange={set('name')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="field-label">Magaalada · City</label>
             <input className="field-input" style={{ marginBottom: 14 }} value={form.city} onChange={set('city')} />
@@ -385,7 +385,7 @@ function ViewRestaurantModal({ restaurant, onClose }) {
           <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>{r.city} · {r.plan}</div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+      <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         <div className="card" style={{ padding: 14 }}>
           <div style={{ fontSize: 11, color: 'var(--muted-2)', fontWeight: 700 }}>Orders</div>
           <div style={{ fontSize: 20, fontWeight: 800 }}>{r.orders}</div>

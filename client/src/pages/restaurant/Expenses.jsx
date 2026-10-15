@@ -156,7 +156,7 @@ export default function Expenses() {
       )}
 
       {!loading && !!activeMethods.length && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 340px)', gap: 20, alignItems: 'start' }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 340px)', gap: 20, alignItems: 'start' }}>
           {/* ---- Expense form ---- */}
           <form onSubmit={submit} className="card card-pad">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 15, marginBottom: 18 }}>
@@ -297,11 +297,11 @@ export default function Expenses() {
         <>
           <div style={{ fontWeight: 800, fontSize: 15, margin: '28px 0 10px' }}>Kharashaadkii ugu dambeeyay · Recent expenses</div>
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.2fr 1.1fr .8fr 40px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+            <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.2fr 1.1fr .8fr 40px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
               <div>Qayb · Category</div><div>Qadar · Amount</div><div>Hab · Method</div><div>Qofka · By</div><div style={{ textAlign: 'right' }}>Goorma</div><div />
             </div>
             {expenses.map((x) => (
-              <div key={x.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.2fr 1.1fr .8fr 40px', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+              <div key={x.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.2fr 1.1fr .8fr 40px', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
                 <div>
                   <div style={{ fontWeight: 700 }}>{x.categoryName}</div>
                   {x.note && <div style={{ color: 'var(--muted-3)', fontSize: 12 }}>{x.note}</div>}

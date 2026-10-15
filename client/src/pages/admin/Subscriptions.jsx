@@ -170,7 +170,7 @@ export default function Subscriptions() {
 
       <ExpiringSoonList onPick={setRestaurantId} selectedId={restaurantId} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 320px) 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 320px) 1fr', gap: 20, alignItems: 'start' }}>
         <div className="card card-pad">
           <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Dooro maqaayad · Find a store</div>
           <select className="field-input" value={restaurantId} onChange={(e) => setRestaurantId(e.target.value)}>
@@ -231,7 +231,7 @@ export default function Subscriptions() {
 
                 <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 20 }}>
                   <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 14 }}>Grant grace period / reactivate</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, marginBottom: 14, maxWidth: 420 }}>
+                  <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, marginBottom: 14, maxWidth: 420 }}>
                     <div>
                       <label className="field-label">Days</label>
                       <input className="field-input" type="number" min={0} value={days} onChange={(e) => setDays(e.target.value)} />

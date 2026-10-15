@@ -119,7 +119,7 @@ export default function Payments() {
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr .8fr 1.5fr 2.2fr .9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+        <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr .8fr 1.5fr 2.2fr .9fr', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
           <div>Order</div><div>Phone</div><div>Amount</div><div>Status</div><div>Description</div><div style={{ textAlign: 'right' }}>Action</div>
         </div>
         {loading && <div className="text-muted" style={{ padding: 24 }}>Loading…</div>}
@@ -127,7 +127,7 @@ export default function Payments() {
           const p = r.payment;
           const s = STATUS_META[p.status] || STATUS_META.none;
           return (
-            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr .8fr 1.5fr 2.2fr .9fr', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
+            <div key={r.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '.8fr 1fr .8fr 1.5fr 2.2fr .9fr', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
               <div>
                 <div className="mono" style={{ fontWeight: 800 }}>#{r.number}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>{timeAgo(r.createdAt)}</div>

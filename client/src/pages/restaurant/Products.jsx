@@ -79,7 +79,7 @@ export default function Products() {
         <div className="card card-pad text-muted">Marka hore ku dar qayb · Add a category first, then add products.</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
         {visible.map((p) => (
           <div key={p.id} className="card" style={{ overflow: 'hidden' }}>
             <div style={{ height: 104, position: 'relative', ...(p.imageUrl ? {} : imgStyle(p.hue)) }}>
@@ -199,7 +199,7 @@ function AddProductModal({ categories, onClose, onCreated }) {
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.nameEn} onChange={set('nameEn')} />
         <label className="field-label">Magaca (Soomaali)</label>
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.nameSo} onChange={set('nameSo')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="field-label">Qiimaha · Price ($)</label>
             <input className="field-input" style={{ marginBottom: 14 }} required type="number" min="0" step="0.01" value={form.price} onChange={set('price')} />
@@ -275,7 +275,7 @@ function EditProductModal({ product, categories, onClose, onSaved }) {
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.nameEn} onChange={set('nameEn')} />
         <label className="field-label">Magaca (Soomaali)</label>
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.nameSo} onChange={set('nameSo')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="field-label">Qiimaha · Price ($)</label>
             <input className="field-input" style={{ marginBottom: 14 }} required type="number" min="0" step="0.01" value={form.price} onChange={set('price')} />

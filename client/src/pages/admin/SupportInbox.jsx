@@ -164,7 +164,7 @@ export default function SupportInbox() {
 
       {error && <div style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</div>}
 
-      <div className="card" style={{
+      <div className="card rtable-wrap" style={{
         flex: 1, minHeight: 0, height: 'calc(100vh - 230px)', overflow: 'hidden',
         display: 'grid', gridTemplateColumns: 'minmax(260px, 320px) 1fr minmax(240px, 280px)',
       }}>

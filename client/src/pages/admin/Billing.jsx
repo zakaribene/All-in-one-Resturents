@@ -58,7 +58,7 @@ export default function Billing() {
         <p className="page-sub">Qorshayaal iyo lacag-bixin · Plans &amp; payment collection.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
+      <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
         <div className="card card-pad">
           <div style={{ fontWeight: 800, fontSize: 15 }}>Free</div>
           <div style={{ fontSize: 28, fontWeight: 800, margin: '8px 0' }}>$0<span style={{ fontSize: 13, color: 'var(--muted-2)', fontWeight: 600 }}>/bil</span></div>
@@ -185,7 +185,7 @@ function PaymentAccountModal({ restaurantId, provider, providerLabel, existing, 
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.baseUrl} onChange={set('baseUrl')} />
         <label className="field-label">Merchant UID</label>
         <input className="field-input" style={{ marginBottom: 14 }} required value={form.merchantUid} onChange={set('merchantUid')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="field-label">API User ID</label>
             <input
@@ -201,7 +201,7 @@ function PaymentAccountModal({ restaurantId, provider, providerLabel, existing, 
             />
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+        <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
           <div>
             <label className="field-label">Currency</label>
             <select className="field-input" style={{ marginBottom: 14 }} value={form.currency} onChange={set('currency')}>
