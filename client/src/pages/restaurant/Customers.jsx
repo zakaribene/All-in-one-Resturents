@@ -247,15 +247,16 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
   }
 
   async function undoPayment(p) {
+    const orderList = p.appliedTo.map((a) => `#${a.orderNumber}`).join(', ');
     const ok = await confirm({
       title: `Ka noqo lacag-bixintan · Undo this payment?`,
-      body: `Order #${p.orderNumber} (${money(p.amount)}) ayaa mar kale noqon doona mid aan la bixin · Order #${p.orderNumber} will go back to owing, and the ${money(p.amount)} will be clawed back from ${p.methodName}.`,
+      body: `${orderList} ayaa mar kale noqon doona mid aan la bixin · ${orderList} will go back to owing, and the ${money(p.amount)} will be clawed back from ${p.methodName}.`,
       tone: 'danger', confirmLabel: 'Ka noqo · Undo',
     });
     if (!ok) return;
     try {
-      await api.post(`/restaurant/orders/${p.orderId}/undo-settle-debt`);
-      addToast({ title: 'Waa la noqday · Payment undone', body: `#${p.orderNumber} · ${money(p.amount)}`, tone: 'success' });
+      await api.post(`/restaurant/customers/${customerId}/payments/${p.id}/undo`);
+      addToast({ title: 'Waa la noqday · Payment undone', body: `${orderList} · ${money(p.amount)}`, tone: 'success' });
       onSettled?.();
       load();
     } catch (err) {
@@ -367,9 +368,9 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
                 <span>{p.methodName} · {p.staffName} · {timeAgo(p.createdAt)}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>+{money(p.amount)}</span>  
-                  {p.orderId && canDebt && (
+                  {!!p.appliedTo?.length && canDebt && (
                     <button
-                      title={`Ka noqo · Undo order #${p.orderNumber}`} onClick={() => undoPayment(p)}
+                      title={`Ka noqo · Undo ${p.appliedTo.map((a) => `#${a.orderNumber}`).join(', ')}`} onClick={() => undoPayment(p)}
                       style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 7, padding: '3px 7px', cursor: 'pointer' }}
                     >
                       Ka noqo · Undo

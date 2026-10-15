@@ -1063,15 +1063,16 @@ function mapCustomer(c) {
   return { id: c._id, name: c.name, phone: c.phone, balance: Math.round((c.balance || 0) * 100) / 100, createdAt: c.createdAt };
 }
 
-function mapDebtPayment(p, order) {
+function mapDebtPayment(p, appliedTo) {
   return {
     id: p._id, amount: Math.round((p.amount || 0) * 100) / 100,
     methodName: p.methodName, staffName: p.staffName, note: p.note || '', createdAt: p.createdAt,
-    // Set when this payment is matched (see /customers/:id) to the one specific order it
-    // settled — lets the Customers page offer an Undo button right on this history row.
-    // A payment that paid down the running balance in general has no single order to
-    // undo back to, so this stays unset for those.
-    orderId: order?.id, orderNumber: order?.number,
+    // Which order(s) this payment paid down, if any — lets the Customers page offer an
+    // Undo button right on this history row, and name what it'll reopen. A payment that
+    // only covered part of an order's total, or paid toward several, lists each one. A
+    // payment that never matched any order's remaining balance has an empty list, so no
+    // Undo is offered (there'd be nothing sensible to reopen).
+    appliedTo: (appliedTo || []).map((a) => ({ orderNumber: a.orderNumber, amount: Math.round((a.amount || 0) * 100) / 100 })),
   };
 }
 
@@ -1111,17 +1112,16 @@ router.get('/customers/:id', requirePermission('customers'), async (req, res) =>
     Order.find({ restaurant: req.auth.id, debtor: customer._id }).sort({ createdAt: -1 }).limit(200).lean(),
     DebtPayment.find({ restaurant: req.auth.id, customer: customer._id }).sort({ createdAt: -1 }).limit(200).lean(),
   ]);
-  // Match each payment to the specific order it settled, if any, so the UI can offer an
-  // Undo button on it — not by note text (fragile, often blank or staff-typed free text),
-  // but by the same signal that's true whenever a payment settled one order: identical
+  // Payments made after DebtPayment.appliedTo existed already know exactly which order(s)
+  // they covered. For older payments made before that field existed, fall back to the
+  // same signal that's true whenever a payment settled one order outright: identical
   // amount, identical wallet, and a paid timestamp within a few seconds of the payment
-  // being recorded. Each order can only be claimed once (closest-in-time payment wins)
-  // so two coincidentally-equal amounts don't cross-match. A payment that paid down the
-  // running balance in general — not any one order — simply finds no match here.
+  // being recorded. Each order can only be claimed once (closest-in-time payment wins) so
+  // two coincidentally-equal amounts don't cross-match.
   const paidOrders = orders.filter((o) => o.payment?.status === 'paid' && o.payment?.paidAt);
   const claimedOrderIds = new Set();
-  const orderForPayment = new Map();
-  for (const p of [...payments].sort((a, b) => a.createdAt - b.createdAt)) {
+  const legacyMatch = new Map();
+  for (const p of [...payments].filter((p) => !p.appliedTo?.length).sort((a, b) => a.createdAt - b.createdAt)) {
     let best = null, bestDelta = Infinity;
     for (const o of paidOrders) {
       if (claimedOrderIds.has(String(o._id))) continue;
@@ -1132,10 +1132,10 @@ router.get('/customers/:id', requirePermission('customers'), async (req, res) =>
     }
     if (best) {
       claimedOrderIds.add(String(best._id));
-      orderForPayment.set(String(p._id), { id: best._id, number: best.number });
+      legacyMatch.set(String(p._id), [{ orderNumber: best.number, amount: p.amount }]);
     }
   }
-  const mappedPayments = payments.map((p) => mapDebtPayment(p, orderForPayment.get(String(p._id))));
+  const mappedPayments = payments.map((p) => mapDebtPayment(p, p.appliedTo?.length ? p.appliedTo : legacyMatch.get(String(p._id))));
   res.json({ customer: mapCustomer(customer), orders: orders.map(mapOrder), payments: mappedPayments });
 });
 
@@ -1166,25 +1166,13 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
     [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }],
     { new: true, updatePipeline: true },
   );
-  const payment = await DebtPayment.create({
-    restaurant: req.auth.id, customer: customer._id, amount,
-    method: method._id, methodName: method.name, staffName: collector.name, note,
-  });
-  // `order: null` — a settlement pays down the customer's running balance, not one
-  // specific order, so there's nothing to link it to. Still recorded so the wallet's
-  // "today" total (which sums this ledger) reflects money collected this way too, not
-  // just money attributed straight to an order.
-  await PaymentCollection.create({
-    restaurant: req.auth.id, method: method._id, methodName: method.name,
-    order: null, orderNumber: null, amount, staff: collector.id, staffName: collector.name,
-  });
-
   // Apply this payment against the customer's open debt orders oldest-first, paying each
   // one's remainder down (see order.payment.paidAmount) before moving to the next — so a
   // $3 payment against a $3.50 order visibly leaves $0.50 still owed on it, instead of
   // sitting as an unattributed balance reduction with every order still looking
   // untouched until the whole thing happens to clear to zero. A fully-covered order flips
-  // to "paid" the same as /orders/:id/settle-debt does.
+  // to "paid" the same as /orders/:id/settle-debt does. Done before creating the
+  // DebtPayment so its `appliedTo` can record exactly what this payment covered.
   const openOrders = await Order.find({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } }).sort({ createdAt: 1 });
   let pool = amount;
   const appliedOrders = [];
@@ -1211,6 +1199,20 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
     emitToRestaurant(req.auth.id, 'order:updated', mapOrder(o.toObject()));
   }
 
+  const payment = await DebtPayment.create({
+    restaurant: req.auth.id, customer: customer._id, amount,
+    method: method._id, methodName: method.name, staffName: collector.name, note,
+    appliedTo: appliedOrders.map((a) => ({ order: a.id, orderNumber: a.number, amount: a.applied })),
+  });
+  // `order: null` — a settlement pays down the customer's running balance, not one
+  // specific order, so there's nothing to link it to (see DebtPayment.appliedTo for that).
+  // Still recorded so the wallet's "today" total (which sums this ledger) reflects money
+  // collected this way too, not just money attributed straight to an order.
+  await PaymentCollection.create({
+    restaurant: req.auth.id, method: method._id, methodName: method.name,
+    order: null, orderNumber: null, amount, staff: collector.id, staffName: collector.name,
+  });
+
   logStoreActivity(req, {
     module: 'customers', action: 'Update',
     message: `${customer.name} paid ${fmtMoney(amount)} toward their balance (${method.name})`
@@ -1219,7 +1221,7 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
   });
   res.status(201).json({
     customer: mapCustomer(customer),
-    payment: mapDebtPayment(payment),
+    payment: mapDebtPayment(payment, payment.appliedTo),
     balance: { [String(method._id)]: Math.round((credited?.balance || 0) * 100) / 100 },
     settledOrders,
     appliedOrders,
@@ -1283,6 +1285,7 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
     restaurant: req.auth.id, customer: customer._id, amount,
     method: method._id, methodName: method.name, staffName: collector.name,
     note: note || `Order #${order.number}`,
+    appliedTo: [{ order: order._id, orderNumber: order.number, amount }],
   });
   await PaymentCollection.create({
     restaurant: req.auth.id, method: method._id, methodName: method.name,
@@ -1301,67 +1304,76 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
   res.json({
     customer: mapCustomer(customer),
     order: payload,
-    payment: mapDebtPayment(payment),
+    payment: mapDebtPayment(payment, payment.appliedTo),
     balance: { [String(method._id)]: Math.round((credited?.balance || 0) * 100) / 100 },
   });
 });
 
-// Undoes a mistaken debt-order settlement — the customer never actually paid this order
-// off, so this reverses everything settling it did: claws back the wallet credit,
-// restores the customer's balance, deletes the ledger rows, and drops the order back to
-// unpaid/owing. Neither the PaymentCollection nor the DebtPayment it created has a
-// guaranteed direct link to this order (a settlement via /orders/:id/settle-debt tags the
-// collection with `order`, but a general balance payment later matched to this order —
-// see /customers/:id — never does), so both are found the same way the match was made:
-// same restaurant/method/amount, timestamp within a few seconds of order.payment.paidAt.
-router.post('/orders/:id/undo-settle-debt', requirePermission('customers'), async (req, res) => {
-  const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
-  if (!order) return res.status(404).json({ error: 'Not found' });
-  if (!order.debtor) return res.status(400).json({ error: 'This order is not charged to a customer account' });
-  if (order.payment?.status !== 'paid') return res.status(400).json({ error: 'Order is not marked paid' });
-  if (!order.payment.manualMethod || !order.payment.paidAt) {
-    return res.status(400).json({ error: 'No payment record found for this order · Deyn ma laha diiwaan lacag-bixin' });
+// Undoes a mistaken debt payment — the customer never actually handed over this money
+// (or it was recorded twice, or against the wrong wallet), so this reverses everything it
+// did: claws back the wallet credit, restores the customer's balance, un-pays down
+// whichever order(s) it was applied to (see DebtPayment.appliedTo — dropping a now-
+// over-fully-paid order back to owing if this payment was what completed it, otherwise
+// just giving back its partial progress), and deletes the payment itself. A payment made
+// before `appliedTo` existed falls back to the old match-by-amount/method/time heuristic,
+// scoped to a single fully-paid order, since that's all the earlier flow could produce.
+router.post('/customers/:customerId/payments/:paymentId/undo', requirePermission('customers'), async (req, res) => {
+  const customer = await Customer.findOne({ _id: req.params.customerId, restaurant: req.auth.id });
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  const payment = await DebtPayment.findOne({ _id: req.params.paymentId, restaurant: req.auth.id, customer: customer._id });
+  if (!payment) return res.status(404).json({ error: 'Not found' });
+
+  let appliedTo = payment.appliedTo || [];
+  if (!appliedTo.length) {
+    const paidOrders = await Order.find({
+      restaurant: req.auth.id, debtor: customer._id, 'payment.status': 'paid', total: payment.amount,
+      'payment.manualMethodName': payment.methodName,
+    }).lean();
+    const match = paidOrders.find((o) => o.payment.paidAt
+      && Math.abs(o.payment.paidAt.getTime() - payment.createdAt.getTime()) <= 5000);
+    if (match) appliedTo = [{ order: match._id, orderNumber: match.number, amount: payment.amount }];
   }
 
-  const customer = await Customer.findOne({ _id: order.debtor, restaurant: req.auth.id });
-  if (!customer) return res.status(404).json({ error: 'Customer not found' });
-
-  const near = {
-    restaurant: req.auth.id, method: order.payment.manualMethod, amount: order.total,
-    createdAt: { $gte: new Date(order.payment.paidAt.getTime() - 5000), $lte: new Date(order.payment.paidAt.getTime() + 5000) },
-  };
-  const collection = (await PaymentCollection.findOne({ ...near, order: order._id }))
-    || (await PaymentCollection.findOne(near));
-  if (!collection) return res.status(400).json({ error: 'No payment record found for this order · Deyn ma laha diiwaan lacag-bixin' });
-
-  const payment = await DebtPayment.findOne({ ...near, customer: customer._id });
+  const touchedOrders = [];
+  for (const a of appliedTo) {
+    const order = await Order.findOne({ _id: a.order, restaurant: req.auth.id });
+    if (!order) continue;
+    const wasPaid = order.payment.status === 'paid';
+    order.payment.paidAmount = Math.max(0, Math.round(((order.payment.paidAmount || 0) - a.amount) * 100) / 100);
+    if (wasPaid) {
+      order.payment.status = 'none';
+      order.payment.paidAt = null;
+      order.payment.manualMethod = null;
+      order.payment.manualMethodName = null;
+      order.payment.collectedByName = null;
+    }
+    await order.save();
+    touchedOrders.push(mapOrder({ ...order.toObject(), debtor: customer }));
+    emitToRestaurant(req.auth.id, 'order:updated', touchedOrders[touchedOrders.length - 1]);
+  }
 
   await PaymentMethod.updateOne(
-    { _id: collection.method, restaurant: req.auth.id },
-    [{ $set: { balance: { $round: [{ $subtract: ['$balance', collection.amount] }, 2] } } }],
+    { _id: payment.method, restaurant: req.auth.id },
+    [{ $set: { balance: { $round: [{ $subtract: ['$balance', payment.amount] }, 2] } } }],
     { updatePipeline: true },
   );
-  await PaymentCollection.deleteOne({ _id: collection._id });
-  if (payment) await DebtPayment.deleteOne({ _id: payment._id });
+  const collection = await PaymentCollection.findOne({
+    restaurant: req.auth.id, method: payment.method, amount: payment.amount,
+    createdAt: { $gte: new Date(payment.createdAt.getTime() - 5000), $lte: new Date(payment.createdAt.getTime() + 5000) },
+  });
+  if (collection) await PaymentCollection.deleteOne({ _id: collection._id });
+  await DebtPayment.deleteOne({ _id: payment._id });
 
-  customer.balance = Math.round((customer.balance + collection.amount) * 100) / 100;
+  customer.balance = Math.round((customer.balance + payment.amount) * 100) / 100;
   await customer.save();
-
-  order.payment.status = 'none';
-  order.payment.paidAt = null;
-  order.payment.manualMethod = null;
-  order.payment.manualMethodName = null;
-  order.payment.collectedByName = null;
-  await order.save();
 
   logStoreActivity(req, {
     module: 'customers', action: 'Update',
-    message: `${customer.name}: undid payment of order #${order.number} (${fmtMoney(collection.amount)}) — back to owing`,
+    message: `${customer.name}: undid a payment of ${fmtMoney(payment.amount)} (${payment.methodName})`
+      + (touchedOrders.length ? ` — ${touchedOrders.map((o) => `#${o.number}`).join(', ')} back to owing` : ''),
   });
 
-  const payload = mapOrder({ ...order.toObject(), debtor: customer });
-  emitToRestaurant(req.auth.id, 'order:updated', payload);
-  res.json({ customer: mapCustomer(customer), order: payload });
+  res.json({ customer: mapCustomer(customer), orders: touchedOrders });
 });
 
 // ---- Expenses (money out, paid from a wallet) ----
