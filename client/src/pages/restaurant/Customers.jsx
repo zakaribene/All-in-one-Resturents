@@ -227,12 +227,13 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
     setBusy(true);
     try {
       const { data: res } = await api.post(`/restaurant/customers/${customerId}/payments`, { amount: amountNum, methodId, note: note.trim() });
-      const settledCount = res.settledOrders?.length || 0;
+      const applied = res.appliedOrders || [];
+      const breakdown = applied
+        .map((a) => `#${a.number} -${money(a.applied)}` + (a.fullySettled ? ' ✓' : ` (${money(a.remaining)} hadhay)`))
+        .join(' · ');
       addToast({
         title: 'Lacagta waa la diiwaan geliyay · Payment recorded',
-        body: settledCount
-          ? `${money(amountNum)} · ${res.payment.methodName} — cashaanka waa la dhammeystiray, ${settledCount} dalab ayaa la bixiyay · balance cleared, ${settledCount} order(s) marked paid`
-          : `${money(amountNum)} · ${res.payment.methodName}`,
+        body: breakdown ? `${money(amountNum)} · ${res.payment.methodName} — ${breakdown}` : `${money(amountNum)} · ${res.payment.methodName}`,
         tone: 'success',
       });
       setAmount(''); setNote('');

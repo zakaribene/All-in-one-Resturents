@@ -1179,38 +1179,50 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
     order: null, orderNumber: null, amount, staff: collector.id, staffName: collector.name,
   });
 
-  // A customer's individual debt orders are never settled one at a time — only once
-  // their whole balance is cleared do we know every order charged to them has actually
-  // been paid for. At that point, flip all of them from the dormant "Deyn" state to
-  // Paid, the same as any other order that just got its bill collected — otherwise
-  // they'd sit forever marked pending even though the money is now in hand.
-  let settledOrders = [];
-  if (customer.balance <= 0.001) {
-    const now = new Date();
-    const openOrders = await Order.find({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } });
-    for (const o of openOrders) {
+  // Apply this payment against the customer's open debt orders oldest-first, paying each
+  // one's remainder down (see order.payment.paidAmount) before moving to the next — so a
+  // $3 payment against a $3.50 order visibly leaves $0.50 still owed on it, instead of
+  // sitting as an unattributed balance reduction with every order still looking
+  // untouched until the whole thing happens to clear to zero. A fully-covered order flips
+  // to "paid" the same as /orders/:id/settle-debt does.
+  const openOrders = await Order.find({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } }).sort({ createdAt: 1 });
+  let pool = amount;
+  const appliedOrders = [];
+  const settledOrders = [];
+  for (const o of openOrders) {
+    if (pool <= 0.001) break;
+    const due = Math.round((o.total - (o.payment.paidAmount || 0)) * 100) / 100;
+    if (due <= 0.001) continue;
+    const apply = Math.min(pool, due);
+    o.payment.paidAmount = Math.round(((o.payment.paidAmount || 0) + apply) * 100) / 100;
+    const fullySettled = o.payment.paidAmount >= o.total - 0.001;
+    if (fullySettled) {
       o.payment.status = 'paid';
-      o.payment.paidAt = now;
+      o.payment.paidAt = new Date();
       o.payment.method = 'pay_at_table';
+      o.payment.manualMethod = method._id;
       o.payment.manualMethodName = method.name;
       o.payment.collectedByName = collector.name;
-      await o.save();
-      const payload = mapOrder(o.toObject());
-      settledOrders.push(payload);
-      emitToRestaurant(req.auth.id, 'order:updated', payload);
     }
+    await o.save();
+    pool = Math.round((pool - apply) * 100) / 100;
+    appliedOrders.push({ id: o._id, number: o.number, applied: apply, remaining: Math.round((o.total - o.payment.paidAmount) * 100) / 100, fullySettled });
+    if (fullySettled) settledOrders.push(mapOrder(o.toObject()));
+    emitToRestaurant(req.auth.id, 'order:updated', mapOrder(o.toObject()));
   }
 
   logStoreActivity(req, {
     module: 'customers', action: 'Update',
     message: `${customer.name} paid ${fmtMoney(amount)} toward their balance (${method.name})`
-      + (settledOrders.length ? ` — balance cleared, ${settledOrders.length} order(s) marked paid` : ''),
+      + (settledOrders.length ? ` — ${settledOrders.length} order(s) paid off` : '')
+      + (appliedOrders.length ? `: ${appliedOrders.map((a) => `#${a.number} ${fmtMoney(a.applied)}`).join(', ')}` : ''),
   });
   res.status(201).json({
     customer: mapCustomer(customer),
     payment: mapDebtPayment(payment),
     balance: { [String(method._id)]: Math.round((credited?.balance || 0) * 100) / 100 },
     settledOrders,
+    appliedOrders,
   });
 });
 
