@@ -1067,11 +1067,10 @@ function mapDebtPayment(p, order) {
   return {
     id: p._id, amount: Math.round((p.amount || 0) * 100) / 100,
     methodName: p.methodName, staffName: p.staffName, note: p.note || '', createdAt: p.createdAt,
-    // Only set when this payment settled one specific order (via /orders/:id/settle-debt,
-    // identifiable by its "Order #N" note) and that order is still paid — lets the
-    // Customers page offer an Undo button right on this history row. A payment that paid
-    // down the running balance in general (order: null in its PaymentCollection) has no
-    // single order to undo back to, so this stays unset for those.
+    // Set when this payment is matched (see /customers/:id) to the one specific order it
+    // settled — lets the Customers page offer an Undo button right on this history row.
+    // A payment that paid down the running balance in general has no single order to
+    // undo back to, so this stays unset for those.
     orderId: order?.id, orderNumber: order?.number,
   };
 }
@@ -1112,13 +1111,31 @@ router.get('/customers/:id', requirePermission('customers'), async (req, res) =>
     Order.find({ restaurant: req.auth.id, debtor: customer._id }).sort({ createdAt: -1 }).limit(200).lean(),
     DebtPayment.find({ restaurant: req.auth.id, customer: customer._id }).sort({ createdAt: -1 }).limit(200).lean(),
   ]);
-  const paidOrderByNumber = new Map(
-    orders.filter((o) => o.payment?.status === 'paid').map((o) => [o.number, { id: o._id, number: o.number }])
-  );
-  const mappedPayments = payments.map((p) => {
-    const m = /^Order #(\d+)$/.exec(p.note || '');
-    return mapDebtPayment(p, m ? paidOrderByNumber.get(Number(m[1])) : undefined);
-  });
+  // Match each payment to the specific order it settled, if any, so the UI can offer an
+  // Undo button on it — not by note text (fragile, often blank or staff-typed free text),
+  // but by the same signal that's true whenever a payment settled one order: identical
+  // amount, identical wallet, and a paid timestamp within a few seconds of the payment
+  // being recorded. Each order can only be claimed once (closest-in-time payment wins)
+  // so two coincidentally-equal amounts don't cross-match. A payment that paid down the
+  // running balance in general — not any one order — simply finds no match here.
+  const paidOrders = orders.filter((o) => o.payment?.status === 'paid' && o.payment?.paidAt);
+  const claimedOrderIds = new Set();
+  const orderForPayment = new Map();
+  for (const p of [...payments].sort((a, b) => a.createdAt - b.createdAt)) {
+    let best = null, bestDelta = Infinity;
+    for (const o of paidOrders) {
+      if (claimedOrderIds.has(String(o._id))) continue;
+      if (o.total !== p.amount) continue;
+      if ((o.payment.manualMethodName || '') !== p.methodName) continue;
+      const delta = Math.abs(new Date(o.payment.paidAt).getTime() - new Date(p.createdAt).getTime());
+      if (delta <= 5000 && delta < bestDelta) { best = o; bestDelta = delta; }
+    }
+    if (best) {
+      claimedOrderIds.add(String(best._id));
+      orderForPayment.set(String(p._id), { id: best._id, number: best.number });
+    }
+  }
+  const mappedPayments = payments.map((p) => mapDebtPayment(p, orderForPayment.get(String(p._id))));
   res.json({ customer: mapCustomer(customer), orders: orders.map(mapOrder), payments: mappedPayments });
 });
 
@@ -1261,30 +1278,35 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
   });
 });
 
-// Undoes a mistaken /orders/:id/settle-debt — the customer never actually paid this
-// order off, so this reverses everything that settlement did: claws back the wallet
-// credit, restores the customer's balance, deletes the ledger rows it created, and
-// drops the order back to unpaid/owing. The DebtPayment row has no direct link to the
-// order it settled (by design — most payments pay down a balance, not one order), so
-// it's matched via the PaymentCollection this same settlement created, which does
-// reference the order: same restaurant/customer/method/amount, created within a couple
-// seconds of it (both rows are written in the same request).
+// Undoes a mistaken debt-order settlement — the customer never actually paid this order
+// off, so this reverses everything settling it did: claws back the wallet credit,
+// restores the customer's balance, deletes the ledger rows, and drops the order back to
+// unpaid/owing. Neither the PaymentCollection nor the DebtPayment it created has a
+// guaranteed direct link to this order (a settlement via /orders/:id/settle-debt tags the
+// collection with `order`, but a general balance payment later matched to this order —
+// see /customers/:id — never does), so both are found the same way the match was made:
+// same restaurant/method/amount, timestamp within a few seconds of order.payment.paidAt.
 router.post('/orders/:id/undo-settle-debt', requirePermission('customers'), async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (!order.debtor) return res.status(400).json({ error: 'This order is not charged to a customer account' });
   if (order.payment?.status !== 'paid') return res.status(400).json({ error: 'Order is not marked paid' });
+  if (!order.payment.manualMethod || !order.payment.paidAt) {
+    return res.status(400).json({ error: 'No payment record found for this order · Deyn ma laha diiwaan lacag-bixin' });
+  }
 
   const customer = await Customer.findOne({ _id: order.debtor, restaurant: req.auth.id });
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
 
-  const collection = await PaymentCollection.findOne({ restaurant: req.auth.id, order: order._id });
+  const near = {
+    restaurant: req.auth.id, method: order.payment.manualMethod, amount: order.total,
+    createdAt: { $gte: new Date(order.payment.paidAt.getTime() - 5000), $lte: new Date(order.payment.paidAt.getTime() + 5000) },
+  };
+  const collection = (await PaymentCollection.findOne({ ...near, order: order._id }))
+    || (await PaymentCollection.findOne(near));
   if (!collection) return res.status(400).json({ error: 'No payment record found for this order · Deyn ma laha diiwaan lacag-bixin' });
 
-  const payment = await DebtPayment.findOne({
-    restaurant: req.auth.id, customer: customer._id, method: collection.method, amount: collection.amount,
-    createdAt: { $gte: new Date(collection.createdAt.getTime() - 2000), $lte: new Date(collection.createdAt.getTime() + 2000) },
-  });
+  const payment = await DebtPayment.findOne({ ...near, customer: customer._id });
 
   await PaymentMethod.updateOne(
     { _id: collection.method, restaurant: req.auth.id },
