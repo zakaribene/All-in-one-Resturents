@@ -224,6 +224,8 @@ export default function RestaurantLayout() {
       )}
       <TopBar
         onMenu={() => setNavOpen(true)}
+        title={me?.name}
+        subtitle={me?.city}
         right={
           <>
             <ThemeToggle />
