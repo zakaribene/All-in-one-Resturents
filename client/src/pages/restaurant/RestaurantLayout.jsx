@@ -227,6 +227,7 @@ export default function RestaurantLayout() {
         title={me?.name}
         subtitle={me?.city}
         logoUrl={me?.logoUrl}
+        hue={me?.hue}
         right={
           <>
             <ThemeToggle />

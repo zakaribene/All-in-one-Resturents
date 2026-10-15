@@ -1,6 +1,6 @@
 import { Menu } from 'lucide-react';
 
-export default function TopBar({ right, onMenu, title, subtitle, logoUrl }) {
+export default function TopBar({ right, onMenu, title, subtitle, logoUrl, hue }) {
   return (
     <div
       style={{
@@ -15,7 +15,12 @@ export default function TopBar({ right, onMenu, title, subtitle, logoUrl }) {
         </button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flex: '0 0 auto', overflow: 'hidden' }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 10,
+          background: hue != null ? `hsl(${hue} 65% 95%)` : 'var(--accent)',
+          color: hue != null ? `hsl(${hue} 55% 42%)` : '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flex: '0 0 auto', overflow: 'hidden',
+        }}>
           {logoUrl ? <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (title?.[0]?.toUpperCase() || 'M')}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, minWidth: 0 }}>
