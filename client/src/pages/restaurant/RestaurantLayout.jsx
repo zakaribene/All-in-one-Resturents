@@ -226,6 +226,7 @@ export default function RestaurantLayout() {
         onMenu={() => setNavOpen(true)}
         title={me?.name}
         subtitle={me?.city}
+        logoUrl={me?.logoUrl}
         right={
           <>
             <ThemeToggle />

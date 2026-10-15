@@ -1,6 +1,6 @@
 import { Menu } from 'lucide-react';
 
-export default function TopBar({ right, onMenu, title, subtitle }) {
+export default function TopBar({ right, onMenu, title, subtitle, logoUrl }) {
   return (
     <div
       style={{
@@ -15,7 +15,9 @@ export default function TopBar({ right, onMenu, title, subtitle }) {
         </button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flex: '0 0 auto' }}>M</div>
+        <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flex: '0 0 auto', overflow: 'hidden' }}>
+          {logoUrl ? <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (title?.[0]?.toUpperCase() || 'M')}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, minWidth: 0 }}>
           <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || 'Miis'}</span>
           <span className="hide-xs" style={{ fontSize: 11, color: 'var(--muted-2)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subtitle || 'Restaurant OS'}</span>
