@@ -159,6 +159,7 @@ function SettleDebtOrderModal({ order, onClose, onSettled, addToast }) {
 }
 
 function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSettled }) {
+  const { confirm } = useOutletContext();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [methods, setMethods] = useState(null);
@@ -220,6 +221,23 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
       addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function undoPayment(p) {
+    const ok = await confirm({
+      title: `Ka noqo lacag-bixintan · Undo this payment?`,
+      body: `Order #${p.orderNumber} (${money(p.amount)}) ayaa mar kale noqon doona mid aan la bixin · Order #${p.orderNumber} will go back to owing, and the ${money(p.amount)} will be clawed back from ${p.methodName}.`,
+      tone: 'danger', confirmLabel: 'Ka noqo · Undo',
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/restaurant/orders/${p.orderId}/undo-settle-debt`);
+      addToast({ title: 'Waa la noqday · Payment undone', body: `#${p.orderNumber} · ${money(p.amount)}`, tone: 'success' });
+      onSettled?.();
+      load();
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
     }
   }
 
@@ -321,9 +339,19 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
           <div style={{ maxHeight: 160, overflowY: 'auto' }}>
             {!data.payments.length && <div className="text-muted" style={{ fontSize: 12.5 }}>Weli wax lacag ah lama bixin · No payments yet.</div>}
             {data.payments.map((p) => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-soft)', fontSize: 12.5 }}>
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border-soft)', fontSize: 12.5 }}>
                 <span>{p.methodName} · {p.staffName} · {timeAgo(p.createdAt)}</span>
-                <span style={{ fontWeight: 700, color: 'var(--success)' }}>+{money(p.amount)}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--success)' }}>+{money(p.amount)}</span>  
+                  {p.orderId && canDebt && (
+                    <button
+                      title={`Ka noqo · Undo order #${p.orderNumber}`} onClick={() => undoPayment(p)}
+                      style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 7, padding: '3px 7px', cursor: 'pointer' }}
+                    >
+                      Ka noqo · Undo
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
