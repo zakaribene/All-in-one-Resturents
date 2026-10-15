@@ -329,7 +329,7 @@ router.post('/orders/:id/revert-to-pending', requireAnyPermission(['orders', 'po
     const byMethod = new Map();
     for (const c of collections) byMethod.set(String(c.method), (byMethod.get(String(c.method)) || 0) + c.amount);
     await Promise.all([...byMethod.entries()].map(([methodId, amount]) =>
-      PaymentMethod.updateOne({ _id: methodId, restaurant: req.auth.id }, { $inc: { balance: -amount } })
+      PaymentMethod.updateOne({ _id: methodId, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $subtract: ['$balance', amount] }, 2] } } }])
     ));
     await PaymentCollection.deleteMany({ restaurant: req.auth.id, order: order._id });
   }
@@ -374,8 +374,8 @@ router.patch('/orders/:id/payment-method', requireAnyPermission(['orders', 'pos'
   }
 
   const amount = order.total;
-  await PaymentMethod.updateOne({ _id: order.payment.manualMethod, restaurant: req.auth.id }, { $inc: { balance: -amount } });
-  await PaymentMethod.updateOne({ _id: newMethod._id, restaurant: req.auth.id }, { $inc: { balance: amount } });
+  await PaymentMethod.updateOne({ _id: order.payment.manualMethod, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $subtract: ['$balance', amount] }, 2] } } }]);
+  await PaymentMethod.updateOne({ _id: newMethod._id, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }]);
   await PaymentCollection.updateMany(
     { restaurant: req.auth.id, order: order._id },
     { $set: { method: newMethod._id, methodName: newMethod.name } },
@@ -572,7 +572,7 @@ router.delete('/orders/:id', requireAnyPermission(['orders', 'payments']), async
     const byMethod = new Map();
     for (const c of collections) byMethod.set(String(c.method), (byMethod.get(String(c.method)) || 0) + c.amount);
     await Promise.all([...byMethod.entries()].map(([methodId, amount]) =>
-      PaymentMethod.updateOne({ _id: methodId, restaurant: req.auth.id }, { $inc: { balance: -amount } })
+      PaymentMethod.updateOne({ _id: methodId, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $subtract: ['$balance', amount] }, 2] } } }])
     ));
     await PaymentCollection.deleteMany({ restaurant: req.auth.id, order: o._id });
   }
@@ -607,7 +607,7 @@ async function attributeManualCollection(order, method, collector) {
   order.payment.manualMethodName = method.name;
   order.payment.collectedByName = collector.name;
   await order.save();
-  await PaymentMethod.updateOne({ _id: method._id }, { $inc: { balance: order.total } });
+  await PaymentMethod.updateOne({ _id: method._id }, [{ $set: { balance: { $round: [{ $add: ['$balance', order.total] }, 2] } } }]);
   await PaymentCollection.create({
     restaurant: order.restaurant, method: method._id, methodName: method.name,
     order: order._id, orderNumber: order.number, amount: order.total,
@@ -1025,8 +1025,8 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
     // Debit atomically so two transfers can't overdraw the same wallet.
     const debited = await PaymentMethod.findOneAndUpdate(
       { _id: from._id, restaurant: req.auth.id, balance: { $gte: amount } },
-      { $inc: { balance: -amount } },
-      { new: true },
+      [{ $set: { balance: { $round: [{ $subtract: ['$balance', amount] }, 2] } } }],
+      { new: true, updatePipeline: true },
     );
     if (!debited) {
       return res.status(400).json({ error: `Balance ku filan ma jiro ${from.name} · Not enough balance in ${from.name}` });
@@ -1035,8 +1035,8 @@ router.post('/payment-transfers', requirePermission('transfers'), async (req, re
   }
   const credited = await PaymentMethod.findOneAndUpdate(
     { _id: to._id, restaurant: req.auth.id },
-    { $inc: { balance: amount } },
-    { new: true },
+    [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }],
+    { new: true, updatePipeline: true },
   );
 
   const collector = await resolveCollector(req);
@@ -1133,8 +1133,8 @@ router.post('/customers/:id/payments', requirePermission('customers'), async (re
   await customer.save();
   const credited = await PaymentMethod.findOneAndUpdate(
     { _id: method._id, restaurant: req.auth.id },
-    { $inc: { balance: amount } },
-    { new: true },
+    [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }],
+    { new: true, updatePipeline: true },
   );
   const payment = await DebtPayment.create({
     restaurant: req.auth.id, customer: customer._id, amount,
@@ -1220,8 +1220,8 @@ router.post('/orders/:id/settle-debt', requirePermission('customers'), async (re
 
   const credited = await PaymentMethod.findOneAndUpdate(
     { _id: method._id, restaurant: req.auth.id },
-    { $inc: { balance: amount } },
-    { new: true },
+    [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }],
+    { new: true, updatePipeline: true },
   );
   const payment = await DebtPayment.create({
     restaurant: req.auth.id, customer: customer._id, amount,
@@ -1336,8 +1336,8 @@ router.post('/expenses', requirePermission('expenses'), async (req, res) => {
   // Debit atomically so concurrent expenses can't overdraw the same wallet.
   const debited = await PaymentMethod.findOneAndUpdate(
     { _id: method._id, restaurant: req.auth.id, balance: { $gte: amount } },
-    { $inc: { balance: -amount } },
-    { new: true },
+    [{ $set: { balance: { $round: [{ $subtract: ['$balance', amount] }, 2] } } }],
+    { new: true, updatePipeline: true },
   );
   if (!debited) {
     return res.status(400).json({ error: `Balance ku filan ma jiro ${method.name} · Not enough balance in ${method.name}` });
@@ -1365,8 +1365,8 @@ router.delete('/expenses/:id', requirePermission('expenses'), async (req, res) =
   if (e.method) {
     const credited = await PaymentMethod.findOneAndUpdate(
       { _id: e.method, restaurant: req.auth.id },
-      { $inc: { balance: e.amount } },
-      { new: true },
+      [{ $set: { balance: { $round: [{ $add: ['$balance', e.amount] }, 2] } } }],
+      { new: true, updatePipeline: true },
     );
     if (credited) balance = { [String(e.method)]: Math.round((credited.balance || 0) * 100) / 100 };
   }
