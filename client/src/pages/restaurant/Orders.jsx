@@ -380,7 +380,7 @@ export default function Orders() {
                   </div>
                 )}
               </div>
-              <div className="mono">{o.phone || <span style={{ color: 'var(--muted-3)' }}>—</span>}</div>
+              <div className="mono">{o.phone ? <a href={`tel:${o.phone}`} style={{ color: 'inherit' }}>{o.phone}</a> : <span style={{ color: 'var(--muted-3)' }}>—</span>}</div>
               <div style={{ fontWeight: 800 }}>${o.total.toFixed(2)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                 {isDebt(o) ? (

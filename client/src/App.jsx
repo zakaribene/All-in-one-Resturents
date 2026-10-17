@@ -1,41 +1,57 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useOutletContext } from 'react-router-dom';
 import { AdminAuthProvider, RestaurantAuthProvider, useAdminAuth, useRestaurantAuth } from './lib/AuthContext';
 import { NAV_PAGES } from './lib/navPages';
 
+// Login and the two layout shells load eagerly — everything else is route content that
+// only matters once a layout is already on screen, so it's split into its own chunk and
+// fetched on demand. On a slow connection this means the sidebar/header appear and are
+// interactive well before, say, the Reports page's charting code has to download.
 import Login from './pages/Login';
 import AdminLayout from './pages/admin/AdminLayout';
-import Overview from './pages/admin/Overview';
-import Restaurants from './pages/admin/Restaurants';
-import Subscriptions from './pages/admin/Subscriptions';
-import Notifications from './pages/admin/Notifications';
-import Billing from './pages/admin/Billing';
-import AdminSms from './pages/admin/Sms';
-import AdminSettings from './pages/admin/Settings';
-import AdminDataManager from './pages/admin/DataManager';
-import AdminActivityLog from './pages/admin/ActivityLog';
-import AdminSupportInbox from './pages/admin/SupportInbox';
-
 import RestaurantLayout from './pages/restaurant/RestaurantLayout';
-import RestaurantOverview from './pages/restaurant/Overview';
-import Orders from './pages/restaurant/Orders';
-import Pos from './pages/restaurant/Pos';
-import Payments from './pages/restaurant/Payments';
-import PayMethods from './pages/restaurant/PayMethods';
-import PayTransfer from './pages/restaurant/PayTransfer';
-import Expenses from './pages/restaurant/Expenses';
-import Reports from './pages/restaurant/Reports';
-import RestaurantSms from './pages/restaurant/Sms';
-import Products from './pages/restaurant/Products';
-import Categories from './pages/restaurant/Categories';
-import QrTab from './pages/restaurant/QrTab';
-import Customers from './pages/restaurant/Customers';
-import Staff from './pages/restaurant/Staff';
-import RestaurantSettings from './pages/restaurant/Settings';
-import RestaurantActivityLog from './pages/restaurant/ActivityLog';
-import RestaurantSupport from './pages/restaurant/Support';
 
-import CustomerOrder from './pages/customer/CustomerOrder';
-import SubscriptionExpired from './pages/SubscriptionExpired';
+const Overview = lazy(() => import('./pages/admin/Overview'));
+const Restaurants = lazy(() => import('./pages/admin/Restaurants'));
+const Subscriptions = lazy(() => import('./pages/admin/Subscriptions'));
+const Notifications = lazy(() => import('./pages/admin/Notifications'));
+const Billing = lazy(() => import('./pages/admin/Billing'));
+const AdminSms = lazy(() => import('./pages/admin/Sms'));
+const AdminSettings = lazy(() => import('./pages/admin/Settings'));
+const AdminDataManager = lazy(() => import('./pages/admin/DataManager'));
+const AdminActivityLog = lazy(() => import('./pages/admin/ActivityLog'));
+const AdminSupportInbox = lazy(() => import('./pages/admin/SupportInbox'));
+
+const RestaurantOverview = lazy(() => import('./pages/restaurant/Overview'));
+const Orders = lazy(() => import('./pages/restaurant/Orders'));
+const Pos = lazy(() => import('./pages/restaurant/Pos'));
+const Payments = lazy(() => import('./pages/restaurant/Payments'));
+const PayMethods = lazy(() => import('./pages/restaurant/PayMethods'));
+const PayTransfer = lazy(() => import('./pages/restaurant/PayTransfer'));
+const Expenses = lazy(() => import('./pages/restaurant/Expenses'));
+const Reports = lazy(() => import('./pages/restaurant/Reports'));
+const RestaurantSms = lazy(() => import('./pages/restaurant/Sms'));
+const Products = lazy(() => import('./pages/restaurant/Products'));
+const Categories = lazy(() => import('./pages/restaurant/Categories'));
+const QrTab = lazy(() => import('./pages/restaurant/QrTab'));
+const Customers = lazy(() => import('./pages/restaurant/Customers'));
+const Staff = lazy(() => import('./pages/restaurant/Staff'));
+const RestaurantSettings = lazy(() => import('./pages/restaurant/Settings'));
+const RestaurantActivityLog = lazy(() => import('./pages/restaurant/ActivityLog'));
+const RestaurantSupport = lazy(() => import('./pages/restaurant/Support'));
+
+const CustomerOrder = lazy(() => import('./pages/customer/CustomerOrder'));
+const SubscriptionExpired = lazy(() => import('./pages/SubscriptionExpired'));
+
+// Shown in place of route content while its chunk downloads — brief on a fast connection,
+// but on a slow one it's what stands between a blank page and something.
+function RouteLoading() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', color: 'var(--muted-3)', fontSize: 13, fontWeight: 600 }}>
+      Loading…
+    </div>
+  );
+}
 
 function RequireAdmin({ children }) {
   const { isAuthed } = useAdminAuth();
@@ -65,6 +81,7 @@ export default function App() {
     <AdminAuthProvider>
       <RestaurantAuthProvider>
         <BrowserRouter>
+          <Suspense fallback={<RouteLoading />}>
           <Routes>
             <Route path="/" element={<Login />} />
 
@@ -122,6 +139,7 @@ export default function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </RestaurantAuthProvider>
     </AdminAuthProvider>

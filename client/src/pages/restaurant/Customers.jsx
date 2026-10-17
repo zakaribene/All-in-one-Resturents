@@ -275,7 +275,8 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
             <div style={{ fontSize: 20, fontWeight: 800, color: balance > 0 ? 'var(--danger)' : 'var(--success)' }}>{money(balance)}</div>
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Phone size={12} strokeWidth={2.25} /> {data.customer.phone || '—'}
+            <Phone size={12} strokeWidth={2.25} />
+            {data.customer.phone ? <a href={`tel:${data.customer.phone}`} style={{ color: 'inherit' }}>{data.customer.phone}</a> : '—'}
           </div>
 
           {balance > 0 && (

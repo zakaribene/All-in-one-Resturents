@@ -133,7 +133,7 @@ export default function Payments() {
                 <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>{timeAgo(r.createdAt)}</div>
                 <div className="mono" style={{ fontSize: 10, color: 'var(--muted-3)', opacity: .75 }}>{formatDateTime(r.createdAt)}</div>
               </div>
-              <div className="mono">{r.phone}</div>
+              <div className="mono">{r.phone ? <a href={`tel:${r.phone}`} style={{ color: 'inherit' }}>{r.phone}</a> : <span style={{ color: 'var(--muted-3)' }}>—</span>}</div>
               <div style={{ fontWeight: 800 }}>${r.total.toFixed(2)}</div>
               <div>
                 <span style={{ background: s.bg, color: s.fg, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>{s.label}</span>

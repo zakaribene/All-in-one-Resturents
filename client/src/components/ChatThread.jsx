@@ -110,7 +110,7 @@ export default function ChatThread({ messages, selfSender, onSend, disabled, dis
                 }}>
                   {m.imageUrl && (
                     <a href={m.imageUrl} target="_blank" rel="noreferrer">
-                      <img src={m.imageUrl} alt="" style={{ display: 'block', maxWidth: 260, maxHeight: 260, borderRadius: 10, objectFit: 'cover' }} />
+                      <img src={m.imageUrl} alt="" style={{ display: 'block', width: 200, maxWidth: 260, height: 200, maxHeight: 260, borderRadius: 10, objectFit: 'cover', background: 'var(--border-soft)' }} />
                     </a>
                   )}
                   {m.text && <div style={{ fontSize: 13.5, lineHeight: 1.45, whiteSpace: 'pre-wrap', padding: m.imageUrl ? '7px 5px 2px' : 0 }}>{m.text}</div>}

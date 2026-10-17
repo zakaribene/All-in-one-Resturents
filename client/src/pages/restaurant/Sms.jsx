@@ -250,7 +250,7 @@ export default function Sms() {
             const s = STATUS_META[l.status];
             return (
               <div key={l.id} className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.1fr 1.2fr 0.9fr 0.9fr', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13 }}>
-                <div className="mono">{l.phone}</div>
+                <div className="mono"><a href={`tel:${l.phone}`} style={{ color: 'inherit' }}>{l.phone}</a></div>
                 <div style={{ color: 'var(--muted-5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</div>
                 <div>
                   <span style={{ background: s.bg, color: s.fg, fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 8 }}>{s.label}</span>

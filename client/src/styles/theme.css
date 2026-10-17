@@ -122,6 +122,10 @@ input, select, textarea { font-family: inherit; }
 }
 .main-area { flex: 1; min-width: 0; padding: 28px 34px; overflow-y: auto; }
 .main-area.tight { padding: 26px 32px; }
+/* Safety net against horizontal overflow from a single long unbroken string (a product
+   name, email, order note with no spaces) — wraps it instead of pushing the layout wider.
+   Doesn't affect normal text, which already wraps at spaces on its own. */
+.main-area { overflow-wrap: anywhere; }
 
 .nav-item {
   display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 12px;
@@ -337,6 +341,46 @@ input, select, textarea { font-family: inherit; }
   }
   .rgrid-table {
     min-width: 660px;
+  }
+  .rgrid-table > * {
+    min-width: 0;
+  }
+
+  /* Modals take over the full screen instead of floating as a small card with
+     margins around it — easier to read and tap, and nothing to accidentally
+     dismiss by tapping just outside a cramped box. */
+  .modal-overlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+  .modal-card {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    height: 100%;
+    border-radius: 0 !important;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Any icon-only square/round button under 40px gets bumped to a real tap
+     target — these are sized tightly for a mouse cursor on desktop, but a
+     fingertip needs more room. Matches the inline sizing pattern these
+     buttons already use (width/height set together, no text label). */
+  .main-area button[style*="width: 26"][style*="height: 26"],
+  .main-area button[style*="width: 32"][style*="height: 32"],
+  .main-area button[style*="width: 34"][style*="height: 34"] {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  /* Modal footers (Cancel + Confirm side by side, right-aligned) stack into
+     full-width buttons instead — on a full-screen mobile modal that pair
+     sits at the bottom of a tall scroll area, so each needs to be a single
+     easy thumb-width tap rather than a small target you have to aim for. */
+  .modal-card [style*="justify-content: flex-end"][style*="gap: 10"] {
+    flex-direction: column !important;
+  }
+  .modal-card [style*="justify-content: flex-end"][style*="gap: 10"] > button {
+    width: 100%;
   }
 }
 
