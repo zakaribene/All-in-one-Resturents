@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock, Receipt } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock, Receipt, UtensilsCrossed } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import ReceiptModal from '../../components/ReceiptModal';
 import CustomerPicker from '../../components/CustomerPicker';
@@ -9,12 +9,6 @@ const pinKeyStyle = {
   height: 56, fontSize: 20, fontWeight: 700, borderRadius: 14,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
 };
-
-function imgStyle(hue) {
-  return {
-    background: `repeating-linear-gradient(135deg, hsl(${hue} 70% 55% / .16) 0 9px, hsl(${hue} 70% 55% / .26) 9px 18px), var(--panel)`,
-  };
-}
 
 function declineMeta(info) {
   const reason = String(info.reason || '').toLowerCase();
@@ -226,8 +220,6 @@ export default function Pos() {
     }
   }
 
-  const catName = (id) => categories.find((c) => c.id === id)?.en || '';
-
   if (noPin) {
     return (
       <div className="card card-pad" style={{ textAlign: 'center', padding: 50, maxWidth: 460, margin: '40px auto' }}>
@@ -277,29 +269,23 @@ export default function Pos() {
     <>
     <div className="rgrid-split" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, alignItems: 'start' }}>
       <div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18, gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <h1 className="page-title" style={{ fontSize: 24 }}>POS · Dalab macmiil</h1>
-            <p className="page-sub">U samee dalab macmiil markuu QR-ka ku dhibtoonaayo · Take an order on the customer's behalf.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+            <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi cunto… · Search products…" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {posPinRequired && (
-              <button
-                className="btn-outline" title="Xir POS · Lock POS"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-                onClick={() => { setPosLocked(true); setPin(''); setUnlockError(''); }}
-              >
-                <Lock size={14} strokeWidth={2.25} /> Xir · Lock
-              </button>
-            )}
-            <div style={{ position: 'relative', minWidth: 220 }}>
-              <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-              <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi cunto…" value={query} onChange={(e) => setQuery(e.target.value)} />
-            </div>
-          </div>
+          {posPinRequired && (
+            <button
+              className="btn-outline" title="Xir POS · Lock POS"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flex: '0 0 auto' }}
+              onClick={() => { setPosLocked(true); setPin(''); setUnlockError(''); }}
+            >
+              <Lock size={14} strokeWidth={2.25} /> Xir · Lock
+            </button>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
           <button className={'chip' + (cat === 'all' ? ' active' : '')} onClick={() => setCat('all')}>All · Dhammaan</button>
           {categories.map((c) => (
             <button key={c.id} className={'chip' + (cat === c.id ? ' active' : '')} onClick={() => setCat(c.id)}>{c.en}</button>
@@ -319,18 +305,19 @@ export default function Pos() {
               className="card"
               style={{ overflow: 'hidden', textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', padding: 0, fontFamily: 'inherit' }}
             >
-              <div style={{ height: 80, position: 'relative', ...(p.imageUrl ? {} : imgStyle(p.hue)) }}>
-                {p.imageUrl && <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+              <div style={{ height: 76, position: 'relative', background: 'var(--panel)' }}>
+                {p.imageUrl
+                  ? <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UtensilsCrossed size={20} strokeWidth={1.5} color="var(--muted-3)" /></div>}
                 {!!cart[p.id] && (
                   <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 800, borderRadius: 99, minWidth: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
                     {cart[p.id]}
                   </span>
                 )}
               </div>
-              <div style={{ padding: 10 }}>
+              <div style={{ padding: '8px 10px' }}>
                 <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.en}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted-2)', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{catName(p.category)}</div>
-                <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--accent)' }}>${p.price.toFixed(2)}</div>
+                <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--accent)', marginTop: 2 }}>${p.price.toFixed(2)}</div>
               </div>
             </button>
           ))}
@@ -350,13 +337,13 @@ export default function Pos() {
                 <div key={l.product.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border-soft)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.product.en}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>${l.product.price.toFixed(2)} × {l.qty}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>${l.product.price.toFixed(2)} × {l.qty} = <span style={{ fontWeight: 700, color: 'var(--text)' }}>${(l.product.price * l.qty).toFixed(2)}</span></div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button onClick={() => decCart(l.product.id)} style={{ width: 24, height: 24, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={12} /></button>
+                    <button onClick={() => decCart(l.product.id)} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={12} /></button>
                     <span className="mono" style={{ minWidth: 16, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>{l.qty}</span>
-                    <button onClick={() => addToCart(l.product.id)} style={{ width: 24, height: 24, borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={12} /></button>
-                    <button onClick={() => removeCart(l.product.id)} style={{ width: 24, height: 24, borderRadius: 7, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginLeft: 2 }}><Trash2 size={12} /></button>
+                    <button onClick={() => addToCart(l.product.id)} style={{ width: 26, height: 26, borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={12} /></button>
+                    <button onClick={() => removeCart(l.product.id)} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginLeft: 2 }}><Trash2 size={12} /></button>
                   </div>
                 </div>
               ))}
@@ -462,10 +449,10 @@ export default function Pos() {
               {placeError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{placeError}</div>}
 
               <button
-                className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }}
+                className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 10, fontSize: 15 }}
                 disabled={!cartLines.length || busy || (debtMode && !debtCustomer)} onClick={submit}
               >
-                {busy ? 'Diraya…' : debtMode ? 'Deyn u dir · Charge to account' : (useOnlinePay ? 'Bixi & Dir · Charge & send' : 'Dir dalabka · Send order')}
+                {busy ? 'Diraya…' : `Dir dalabka · Place Order${cartLines.length ? ' · $' + total.toFixed(2) : ''}`}
               </button>
             </div>
           </>
