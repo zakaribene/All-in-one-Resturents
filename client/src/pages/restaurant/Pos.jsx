@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock, Receipt } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, Phone, User, Wallet, HandCoins, Lock, Receipt, CheckCircle2 } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import ReceiptModal from '../../components/ReceiptModal';
 import CustomerPicker from '../../components/CustomerPicker';
@@ -144,10 +144,20 @@ export default function Pos() {
   function removeCart(pid) {
     setCart((c) => { const next = { ...c }; delete next[pid]; return next; });
   }
+  function clearCart() { setCart({}); }
+
+  function applyDiscountPercent(pct) {
+    if (!pct) { setDiscount(''); return; }
+    setDiscount((subtotal * pct / 100).toFixed(2));
+  }
 
   function resetOrder() {
     setCart({}); setDiscount(''); setPhone(''); setPhoneError(false); setWaiterName(''); setWaiterNameError(false); setStage('cart');
     setDeclineInfo(null); setPlaceError(''); setClientRequestId(''); setDebtCustomer(null);
+    // After an order goes out, scroll the page back to the top so the next order starts
+    // from the beginning of the product list instead of wherever the cashier had scrolled
+    // to while picking items.
+    document.querySelector('.main-area')?.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function submitDebt() {
@@ -311,140 +321,192 @@ export default function Pos() {
           <div className="card card-pad text-muted">Weli cunto ma jirto · Add products first.</div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+        <div className="pos-grid" style={{ display: 'grid', gap: 14 }}>
           {visible.map((p) => (
             <button
               key={p.id}
               onClick={() => addToCart(p.id)}
-              className="card"
+              className="card pos-product-card"
               style={{ overflow: 'hidden', textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', padding: 0, fontFamily: 'inherit' }}
             >
-              <div style={{ height: 80, position: 'relative', ...(p.imageUrl ? {} : imgStyle(p.hue)) }}>
+              <div style={{ height: 108, position: 'relative', ...(p.imageUrl ? {} : imgStyle(p.hue)) }}>
                 {p.imageUrl && <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                 {!!cart[p.id] && (
-                  <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 800, borderRadius: 99, minWidth: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+                  <span style={{ position: 'absolute', top: 7, right: 7, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 800, borderRadius: 99, minWidth: 21, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
                     {cart[p.id]}
                   </span>
                 )}
               </div>
-              <div style={{ padding: 10 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.en}</div>
+              <div style={{ padding: '10px 12px 12px' }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.en}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted-2)', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{catName(p.category)}</div>
-                <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--accent)' }}>${p.price.toFixed(2)}</div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--accent)' }}>${p.price.toFixed(2)}</div>
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="card" style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 68px)' }}>
+      <div className="card" style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - 110px)', overflow: 'hidden' }}>
         {stage === 'cart' && (
           <>
-            <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 800, fontSize: 15 }}>Dalabka · Order</span>
-              <span className="pill" style={{ background: 'var(--panel-2)', color: 'var(--muted-4)' }}>{cartCount} items</span>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 0 auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 800, fontSize: 15 }}>Dalabka · Order</span>
+                <span className="pill" style={{ background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))', color: 'var(--accent)', fontSize: 11 }}>{cartCount} items</span>
+              </div>
+              {!!cartLines.length && (
+                <button
+                  type="button" onClick={clearCart}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  <Trash2 size={12} strokeWidth={2.25} /> Faaruqi · Clear
+                </button>
+              )}
             </div>
-            <div style={{ overflow: 'auto', flex: 1, padding: '6px 18px', minHeight: 80 }}>
+
+            {/* Only the cart line items scroll — payment/waiter/discount below and the
+                header above are fixed, never part of this scroll area. min-height:0 is
+                what lets this flex child actually shrink and scroll instead of growing
+                past its container. */}
+            <div style={{ overflow: 'auto', flex: '1 1 auto', minHeight: 0, padding: '4px 18px' }}>
               {!cartLines.length && <div className="text-muted" style={{ fontSize: 13, padding: '20px 0', textAlign: 'center' }}>Weli waxba lama darin · Cart is empty.</div>}
               {cartLines.map((l) => (
                 <div key={l.product.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border-soft)' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 9, flex: '0 0 auto', overflow: 'hidden', position: 'relative', ...(l.product.imageUrl ? {} : imgStyle(l.product.hue)) }}>
+                    {l.product.imageUrl && <img src={l.product.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                  </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.product.en}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>${l.product.price.toFixed(2)} × {l.qty}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted-3)' }}>${l.product.price.toFixed(2)} / nin</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button onClick={() => decCart(l.product.id)} style={{ width: 24, height: 24, borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={12} /></button>
-                    <span className="mono" style={{ minWidth: 16, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>{l.qty}</span>
-                    <button onClick={() => addToCart(l.product.id)} style={{ width: 24, height: 24, borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={12} /></button>
-                    <button onClick={() => removeCart(l.product.id)} style={{ width: 24, height: 24, borderRadius: 7, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginLeft: 2 }}><Trash2 size={12} /></button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: '0 0 auto' }}>
+                    <button onClick={() => decCart(l.product.id)} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={11} /></button>
+                    <span className="mono" style={{ minWidth: 14, textAlign: 'center', fontSize: 12.5, fontWeight: 700 }}>{l.qty}</span>
+                    <button onClick={() => addToCart(l.product.id)} style={{ width: 22, height: 22, borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Plus size={11} /></button>
                   </div>
+                  <div style={{ width: 46, textAlign: 'right', fontWeight: 800, fontSize: 13, flex: '0 0 auto' }}>${(l.product.price * l.qty).toFixed(2)}</div>
+                  <button onClick={() => removeCart(l.product.id)} title="Ka saar · Remove" style={{ width: 26, height: 26, borderRadius: 7, flex: '0 0 auto', border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash2 size={13} strokeWidth={2.25} /></button>
                 </div>
               ))}
             </div>
-            <div style={{ borderTop: '1px solid var(--border-soft)', padding: 18 }}>
-              <label className="field-label">Lacag-bixinta · Payment</label>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                {!!paymentOptions.length && (
+
+            <div style={{ borderTop: '1px solid var(--border-soft)', padding: '14px 18px 4px', flex: '0 0 auto' }}>
+                <label className="field-label" style={{ textTransform: 'uppercase', letterSpacing: '.03em', fontSize: 10.5 }}>Habka Lacag-bixinta · Payment</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                  {!!paymentOptions.length && (
+                    <button
+                      type="button"
+                      className={'chip' + (payMode === 'pay' ? ' active' : '')} style={{ flex: '1 1 120px', padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+                      onClick={() => setPayMode('pay')}
+                    >
+                      <Wallet size={14} strokeWidth={2.25} /> Bixi hadda
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className={'chip' + (payMode === 'pay' ? ' active' : '')} style={{ flex: '1 1 90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                    onClick={() => setPayMode('pay')}
+                    className={'chip' + (payMode === 'manual' ? ' active' : '')} style={{ flex: '1 1 120px', padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+                    onClick={() => setPayMode('manual')}
                   >
-                    <Wallet size={13} strokeWidth={2.25} /> Bixi hadda
+                    <HandCoins size={14} strokeWidth={2.25} /> Manual
                   </button>
-                )}
-                <button
-                  type="button"
-                  className={'chip' + (payMode === 'manual' ? ' active' : '')} style={{ flex: '1 1 90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                  onClick={() => setPayMode('manual')}
-                >
-                  <HandCoins size={13} strokeWidth={2.25} /> Manual
-                </button>
-                {canDebt && (
-                  <button
-                    type="button"
-                    className={'chip' + (payMode === 'debt' ? ' active' : '')} style={{ flex: '1 1 90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                    onClick={() => setPayMode('debt')}
-                  >
-                    <Receipt size={13} strokeWidth={2.25} /> Deyn
-                  </button>
-                )}
-              </div>
-              {payMode === 'pay' && paymentOptions.length > 1 && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                  {paymentOptions.map((p) => (
-                    <button key={p.provider} type="button" className={'chip' + (provider === p.provider ? ' active' : '')} onClick={() => setProvider(p.provider)}>{p.label}</button>
-                  ))}
+                  {canDebt && (
+                    <button
+                      type="button"
+                      className={'chip' + (payMode === 'debt' ? ' active' : '')} style={{ flex: '1 1 120px', padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+                      onClick={() => setPayMode('debt')}
+                    >
+                      <Receipt size={14} strokeWidth={2.25} /> Deyn (Credit)
+                    </button>
+                  )}
                 </div>
-              )}
-
-              {debtMode ? (
-                <>
-                  <label className="field-label">Macmiil · Customer *</label>
-                  <div style={{ marginBottom: 14 }}>
-                    <CustomerPicker value={debtCustomer} onChange={setDebtCustomer} />
+                {payMode === 'pay' && paymentOptions.length > 1 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {paymentOptions.map((p) => (
+                      <button key={p.provider} type="button" className={'chip' + (provider === p.provider ? ' active' : '')} onClick={() => setProvider(p.provider)}>{p.label}</button>
+                    ))}
                   </div>
-                </>
-              ) : (
-                <>
-                  <label className="field-label">
-                    Lambarka macmiilka · Customer phone {useOnlinePay ? '*' : <span style={{ color: 'var(--muted-3)', fontWeight: 500 }}>(ikhtiyaari · optional)</span>}
-                  </label>
-                  <div style={{ position: 'relative', marginBottom: phoneError ? 4 : 12 }}>
-                    <Phone size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-                    <input
-                      className={'field-input' + (phoneError ? ' error' : '')} style={{ paddingLeft: 32 }}
-                      placeholder="063 xxxxxxx" value={phone}
-                      onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
-                    />
-                  </div>
-                  {phoneError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Phone number is required</div>}
-                </>
-              )}
+                )}
 
-              <label className="field-label">Waiter name *</label>
-              <div style={{ position: 'relative', marginBottom: waiterNameError ? 4 : 14 }}>
-                <User size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-                <input
-                  className={'field-input' + (waiterNameError ? ' error' : '')} style={{ paddingLeft: 32 }}
-                  placeholder="Tusaale · e.g. Ayub" value={waiterName}
-                  onChange={(e) => { setWaiterName(e.target.value); setWaiterNameError(false); }}
-                />
-              </div>
-              {waiterNameError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Waiter name is required</div>}
+                {debtMode ? (
+                  <>
+                    <label className="field-label">Macmiil · Customer *</label>
+                    <div style={{ marginBottom: 14 }}>
+                      <CustomerPicker value={debtCustomer} onChange={setDebtCustomer} />
+                    </div>
+                    <label className="field-label">Waiter name *</label>
+                    <div style={{ position: 'relative', marginBottom: waiterNameError ? 4 : 14 }}>
+                      <User size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+                      <input
+                        className={'field-input' + (waiterNameError ? ' error' : '')} style={{ paddingLeft: 32 }}
+                        placeholder="Tusaale · e.g. Ayub" value={waiterName}
+                        onChange={(e) => { setWaiterName(e.target.value); setWaiterNameError(false); }}
+                      />
+                    </div>
+                    {waiterNameError && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Waa lagama maarmaan · Waiter name is required</div>}
+                  </>
+                ) : (
+                  <>
+                    {/* Customer phone is only functionally required for online payment
+                        (the provider confirmation goes to this number — see submit()),
+                        so it's hidden for the normal manual/no-online-pay case per the
+                        owner's explicit request. Kept, not deleted, when useOnlinePay is
+                        active so that flow still works. */}
+                    <div className={useOnlinePay ? 'rgrid-split' : undefined} style={useOnlinePay ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 } : { marginBottom: 14 }}>
+                      {useOnlinePay && (
+                        <div>
+                          <label className="field-label">Customer phone *</label>
+                          <div style={{ position: 'relative' }}>
+                            <Phone size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+                            <input
+                              className={'field-input' + (phoneError ? ' error' : '')} style={{ paddingLeft: 32 }}
+                              placeholder="063 xxxxxxx" value={phone}
+                              onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
+                            />
+                          </div>
+                          {phoneError && <div style={{ color: 'var(--danger)', fontSize: 11.5, fontWeight: 600, marginTop: 4 }}>Waa lagama maarmaan</div>}
+                        </div>
+                      )}
+                      <div>
+                        <label className="field-label">Waiter *</label>
+                        <div style={{ position: 'relative' }}>
+                          <User size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+                          <input
+                            className={'field-input' + (waiterNameError ? ' error' : '')} style={{ paddingLeft: 32 }}
+                            placeholder="Tusaale · Ayub" value={waiterName}
+                            onChange={(e) => { setWaiterName(e.target.value); setWaiterNameError(false); }}
+                          />
+                        </div>
+                        {waiterNameError && <div style={{ color: 'var(--danger)', fontSize: 11.5, fontWeight: 600, marginTop: 4 }}>Waa lagama maarmaan</div>}
+                      </div>
+                    </div>
+                  </>
+                )}
 
-              {canDiscount && (
-                <>
-                  <label className="field-label">Dhimis · Discount ($)</label>
-                  <input
-                    type="number" min="0" step="0.01" className="field-input" style={{ marginBottom: 12 }}
-                    placeholder="0.00" value={discount}
-                    onChange={(e) => setDiscount(e.target.value)}
-                  />
-                </>
-              )}
+                {canDiscount && (
+                  <>
+                    <label className="field-label">Dhimis · Discount ($)</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                      {[0, 5, 10].map((pct) => (
+                        <button
+                          key={pct} type="button" onClick={() => applyDiscountPercent(pct)}
+                          className="chip" style={{ padding: '5px 11px', fontSize: 12 }}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                      <input
+                        type="number" min="0" step="0.01" className="field-input" style={{ flex: 1, textAlign: 'right' }}
+                        placeholder="0.00" value={discount}
+                        onChange={(e) => setDiscount(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+            </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0 2px' }}>
+            <div style={{ borderTop: '1px solid var(--border-soft)', padding: 18, flex: '0 0 auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', margin: '0 0 2px' }}>
                 <span style={{ color: 'var(--muted-2)', fontSize: 13 }}>Wadarta hoose · Subtotal</span>
                 <span style={{ fontSize: 13, color: 'var(--muted-2)' }}>${subtotal.toFixed(2)}</span>
               </div>
@@ -454,18 +516,19 @@ export default function Pos() {
                   <span style={{ fontSize: 13, color: 'var(--danger)' }}>−${discountAmount.toFixed(2)}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0 14px' }}>
-                <span style={{ color: 'var(--muted-1)', fontWeight: 600 }}>Wadarta · Total</span>
-                <span style={{ fontWeight: 800, fontSize: 20 }}>${total.toFixed(2)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '6px 0 14px' }}>
+                <span style={{ color: 'var(--muted-1)', fontWeight: 700, fontSize: 14 }}>Wadarta Guud · Total</span>
+                <span style={{ fontWeight: 800, fontSize: 21 }}>${total.toFixed(2)}</span>
               </div>
 
               {placeError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{placeError}</div>}
 
               <button
-                className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 14 }}
+                className="btn btn-primary" style={{ width: '100%', padding: 14, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                 disabled={!cartLines.length || busy || (debtMode && !debtCustomer)} onClick={submit}
               >
-                {busy ? 'Diraya…' : debtMode ? 'Deyn u dir · Charge to account' : (useOnlinePay ? 'Bixi & Dir · Charge & send' : 'Dir dalabka · Send order')}
+                {!busy && <CheckCircle2 size={17} strokeWidth={2.25} />}
+                {busy ? 'Diraya…' : debtMode ? 'Deyn u dir · Charge to account' : (useOnlinePay ? 'Bixi & Dir · Charge & send' : 'Dir Dalabka · Send Order')}
               </button>
             </div>
           </>

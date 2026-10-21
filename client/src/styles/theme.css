@@ -390,3 +390,16 @@ input, select, textarea { font-family: inherit; }
   .page-title { font-size: 19px; }
   .btn { padding: 10px 15px; font-size: 13px; }
 }
+
+/* ---------- POS product grid ---------- */
+.pos-grid { grid-template-columns: repeat(4, 1fr); }
+.pos-product-card { transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease; }
+.pos-product-card:hover { border-color: var(--border-strong); box-shadow: 0 6px 16px -10px rgba(16,26,43,.25); transform: translateY(-1px); }
+.pos-product-card:active { transform: translateY(0); box-shadow: none; }
+
+@media (max-width: 1100px) {
+  .pos-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 760px) {
+  .pos-grid { grid-template-columns: repeat(2, 1fr); }
+}
