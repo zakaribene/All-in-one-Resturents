@@ -1903,7 +1903,9 @@ async function computeMonthBalances(restaurantId, methods) {
     } },
   ]);
   const monthCollectedById = new Map();
+  const collectsOrdersIds = new Set();
   for (const row of collectionRows) {
+    collectsOrdersIds.add(String(row.method));
     if (row.relevantDate >= monthRange.$gte && row.relevantDate < monthRange.$lt) {
       const key = String(row.method);
       monthCollectedById.set(key, (monthCollectedById.get(key) || 0) + row.amount);
@@ -1926,8 +1928,15 @@ async function computeMonthBalances(restaurantId, methods) {
   }
   const expensesById = new Map(expensesAgg.map((r) => [String(r._id), r.total]));
 
+  // A wallet that takes order payments directly (EVC, eDahab) is swept out to a "Main"
+  // wallet every day, so what staff need to see is what's actually in it right now — the
+  // same stored balance the Transfer page moves. The month-scoped figure can drift from
+  // that (an old month's order paid late counts toward the old month, but the cash is
+  // swept out this month), which made "Transfer all" leave a phantom negative behind.
+  // A wallet that only ever receives transfers (Main) keeps the monthly figure.
   return new Map(methods.map((m) => {
     const key = String(m._id);
+    if (collectsOrdersIds.has(key)) return [key, Math.round((m.balance || 0) * 100) / 100];
     const net = (monthCollectedById.get(key) || 0)
       + (transfersInById.get(key) || 0)
       - (transfersOutById.get(key) || 0)
