@@ -282,12 +282,32 @@ router.post('/orders/:id/complete', requirePermission('orders'), async (req, res
 // A POS order placed as "Manual" stays unpaid/pending until a waiter marks it
 // paid here (choosing which till/account collected the cash), at which point
 // it can no longer be edited.
+//
+// Also takes a partial `amount` — e.g. a $4 order where the customer only hands over
+// $2 for now. That $2 is credited to the chosen wallet straight away (its own
+// PaymentCollection row) and added to order.payment.paidAmount, but the order stays
+// pending with the remaining $2 still owed. Tapping "Bixi" again later collects the
+// rest (possibly into a different wallet); once paidAmount reaches the total the order
+// flips to "paid" exactly like a one-shot payment. If the owner decides the remainder
+// won't come today, they move the order to Deyn — assign-debt then only charges the
+// customer what's still unpaid.
 router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), async (req, res) => {
   const { manualMethodId } = req.body || {};
   const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be marked paid here' });
   if (order.payment?.status === 'paid') return res.status(400).json({ error: 'Already paid' });
+  if (order.debtor) return res.status(400).json({ error: 'This order is charged to a customer account — settle it from the Customers page instead' });
+
+  const alreadyPaid = Math.round((order.payment.paidAmount || 0) * 100) / 100;
+  const remaining = Math.round((order.total - alreadyPaid) * 100) / 100;
+  const amount = req.body?.amount != null && req.body.amount !== ''
+    ? Math.round((Number(req.body.amount) || 0) * 100) / 100
+    : remaining;
+  if (!(amount > 0)) return res.status(400).json({ error: 'Qadarka waa inuu ka weyn yahay 0 · Amount must be greater than 0' });
+  if (amount > remaining + 0.001) {
+    return res.status(400).json({ error: `Qadarku kama badnaan karo hadhaaga ${fmtMoney(remaining)} · Amount cannot exceed what's left on this order` });
+  }
 
   const activeMethods = await PaymentMethod.find({ restaurant: req.auth.id, status: 'active' }).lean();
   let method = null;
@@ -295,14 +315,28 @@ router.post('/orders/:id/mark-paid', requireAnyPermission(['orders', 'pos']), as
     method = activeMethods.find(m => String(m._id) === String(manualMethodId));
     if (!method) return res.status(400).json({ error: 'Dooro habka lacag-bixinta · Choose a payment method' });
   }
-  if (method) await attributeManualCollection(order, method, await resolveCollector(req));
+  const collector = await resolveCollector(req);
+  if (method) await attributeManualCollection(order, method, collector, amount);
 
+  const paidAmount = Math.round((alreadyPaid + amount) * 100) / 100;
+  const fullySettled = paidAmount >= order.total - 0.001;
   order.payment.method = 'pay_at_table';
-  order.payment.status = 'paid';
-  order.payment.paidAt = new Date();
+  order.payment.paidAmount = paidAmount;
+  if (fullySettled) {
+    order.payment.status = 'paid';
+    order.payment.paidAt = new Date();
+  }
   await order.save();
 
-  logStoreActivity(req, { module: 'orders', action: 'Update', message: `Order #${order.number} marked paid (${fmtMoney(order.total)})` });
+  const left = Math.round((order.total - paidAmount) * 100) / 100;
+  logStoreActivity(req, {
+    module: 'orders', action: 'Update',
+    message: fullySettled
+      ? (alreadyPaid > 0
+        ? `Order #${order.number} paid off (${fmtMoney(amount)} now, ${fmtMoney(order.total)} total${method ? `, ${method.name}` : ''})`
+        : `Order #${order.number} marked paid (${fmtMoney(order.total)})`)
+      : `Order #${order.number} partly paid: ${fmtMoney(amount)}${method ? ` (${method.name})` : ''} — ${fmtMoney(left)} still owed`,
+  });
   const payload = mapOrder(order.toObject());
   emitToRestaurant(req.auth.id, 'order:updated', payload);
   res.json(payload);
@@ -321,7 +355,10 @@ router.post('/orders/:id/revert-to-pending', requireAnyPermission(['orders', 'po
   const order = await Order.findOne({ _id: req.params.id, restaurant: req.auth.id });
   if (!order) return res.status(404).json({ error: 'Not found' });
   if (order.channel !== 'pos') return res.status(400).json({ error: 'Only POS orders can be reverted here' });
-  if (order.payment?.status !== 'paid') return res.status(400).json({ error: 'Order is not marked paid' });
+  // Also undoes a partial payment (status still pending, but some money already
+  // collected via mark-paid's `amount`) — same reversal, just of a smaller amount.
+  const partlyPaid = order.payment?.status !== 'paid' && (order.payment?.paidAmount || 0) > 0;
+  if (order.payment?.status !== 'paid' && !partlyPaid) return res.status(400).json({ error: 'Order is not marked paid' });
   if (order.debtor) return res.status(400).json({ error: 'This order is charged to a customer account — settle it from the Customers page instead' });
 
   const collections = await PaymentCollection.find({ restaurant: req.auth.id, order: order._id }).lean();
@@ -334,8 +371,10 @@ router.post('/orders/:id/revert-to-pending', requireAnyPermission(['orders', 'po
     await PaymentCollection.deleteMany({ restaurant: req.auth.id, order: order._id });
   }
 
+  const givenBack = collections.reduce((a, c) => a + c.amount, 0) || order.payment.paidAmount || order.total;
   order.payment.status = 'none';
   order.payment.paidAt = null;
+  order.payment.paidAmount = 0;
   order.payment.manualMethod = null;
   order.payment.manualMethodName = null;
   order.payment.collectedByName = null;
@@ -343,7 +382,7 @@ router.post('/orders/:id/revert-to-pending', requireAnyPermission(['orders', 'po
 
   logStoreActivity(req, {
     module: 'orders', action: 'Update',
-    message: `Order #${order.number} reverted to pending — "Paid" was tapped by mistake (${fmtMoney(order.total)} given back)`,
+    message: `Order #${order.number} reverted to pending — "Paid" was tapped by mistake (${fmtMoney(givenBack)} given back)`,
   });
   const payload = mapOrder(order.toObject());
   emitToRestaurant(req.auth.id, 'order:updated', payload);
@@ -373,9 +412,22 @@ router.patch('/orders/:id/payment-method', requireAnyPermission(['orders', 'pos'
     return res.json(mapOrder(order.toObject()));
   }
 
-  const amount = order.total;
-  await PaymentMethod.updateOne({ _id: order.payment.manualMethod, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $subtract: ['$balance', amount] }, 2] } } }], { updatePipeline: true });
-  await PaymentMethod.updateOne({ _id: newMethod._id, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }], { updatePipeline: true });
+  // An order paid in several parts may have its money split across wallets — move each
+  // part off whichever wallet actually got it, not the order total off the last one.
+  const collections = await PaymentCollection.find({ restaurant: req.auth.id, order: order._id }).lean();
+  const byMethod = new Map();
+  if (collections.length) {
+    for (const c of collections) byMethod.set(String(c.method), (byMethod.get(String(c.method)) || 0) + c.amount);
+  } else {
+    byMethod.set(String(order.payment.manualMethod), order.total);
+  }
+  let amount = 0;
+  for (const [fromId, amt] of byMethod.entries()) {
+    amount += amt;
+    if (fromId === String(newMethod._id)) continue;
+    await PaymentMethod.updateOne({ _id: fromId, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $subtract: ['$balance', amt] }, 2] } } }], { updatePipeline: true });
+    await PaymentMethod.updateOne({ _id: newMethod._id, restaurant: req.auth.id }, [{ $set: { balance: { $round: [{ $add: ['$balance', amt] }, 2] } } }], { updatePipeline: true });
+  }
   await PaymentCollection.updateMany(
     { restaurant: req.auth.id, order: order._id },
     { $set: { method: newMethod._id, methodName: newMethod.name } },
@@ -497,6 +549,12 @@ router.patch('/orders/:id/items', requireAnyPermission(['orders', 'pos']), async
     }
   }
 
+  const newTotal = Math.round((subtotal - discountAmount) * 100) / 100;
+  const collected = order.debtor ? 0 : (order.payment?.paidAmount || 0);
+  if (newTotal < collected - 0.001) {
+    return res.status(400).json({ error: `Wadarta cusub kama yaraan karto lacagta horay loo bixiyay ${fmtMoney(collected)} · New total can't be less than what's already been paid — undo the payment first` });
+  }
+
   const oldTotal = order.total;
   order.items = cleanItems;
   order.discount = discountAmount;
@@ -528,14 +586,18 @@ router.post('/orders/:id/assign-debt', requireAnyPermission(['orders', 'pos']), 
   const customer = await resolveOrCreateCustomer(req, req.body || {});
   if (customer.error) return res.status(customer.status).json({ error: customer.error });
 
+  // A partly-paid order only puts what's still unpaid on the customer's account — the
+  // part already collected stays in its wallet, and paidAmount carries over so the
+  // Customers page's settle-debt / FIFO logic (total - paidAmount) sees the same remainder.
+  const owed = Math.round((order.total - (order.payment.paidAmount || 0)) * 100) / 100;
   order.debtor = customer._id;
   await order.save();
-  customer.balance = Math.round((customer.balance + order.total) * 100) / 100;
+  customer.balance = Math.round((customer.balance + owed) * 100) / 100;
   await customer.save();
 
   logStoreActivity(req, {
     module: 'customers', action: 'Update',
-    message: `Order #${order.number} charged to ${customer.name}'s account (${fmtMoney(order.total)})`,
+    message: `Order #${order.number} charged to ${customer.name}'s account (${fmtMoney(owed)}${owed < order.total ? ` of ${fmtMoney(order.total)} — rest already paid` : ''})`,
   });
   const payload = mapOrder({ ...order.toObject(), debtor: customer });
   emitToRestaurant(req.auth.id, 'order:updated', payload);
@@ -562,6 +624,7 @@ router.delete('/orders/:id', requireAnyPermission(['orders', 'payments']), async
     if (stillThere) return res.status(400).json({ error: 'A paid order cannot be deleted · Dalab la bixiyay lama tirtiri karo' });
     return res.status(404).json({ error: 'Not found' });
   }
+  emitToRestaurant(req.auth.id, 'order:deleted', { id: String(o._id) });
 
   // Deleting an order must undo its financial footprint everywhere, not just remove it
   // from the Orders list — otherwise a wallet this order was ever attributed to (manual
@@ -601,16 +664,16 @@ async function resolveCollector(req) {
 
 // Attributes an order's total to a restaurant-defined manual payment method:
 // stamps the order, bumps the method's running balance, and writes a ledger row.
-async function attributeManualCollection(order, method, collector) {
+async function attributeManualCollection(order, method, collector, amount = order.total) {
   order.payment.method = 'pay_at_table';
   order.payment.manualMethod = method._id;
   order.payment.manualMethodName = method.name;
   order.payment.collectedByName = collector.name;
   await order.save();
-  await PaymentMethod.updateOne({ _id: method._id }, [{ $set: { balance: { $round: [{ $add: ['$balance', order.total] }, 2] } } }], { updatePipeline: true });
+  await PaymentMethod.updateOne({ _id: method._id }, [{ $set: { balance: { $round: [{ $add: ['$balance', amount] }, 2] } } }], { updatePipeline: true });
   await PaymentCollection.create({
     restaurant: order.restaurant, method: method._id, methodName: method.name,
-    order: order._id, orderNumber: order.number, amount: order.total,
+    order: order._id, orderNumber: order.number, amount,
     staff: collector.id, staffName: collector.name,
   });
 }
@@ -1527,11 +1590,17 @@ const SALES_COLUMNS = [
   { header: 'Channel', headerSo: 'Kanaal', key: 'channel', w: 1.2, width: 13 },
   { header: 'Items', headerSo: 'Alaab', key: 'itemsCount', w: 0.8, width: 8, align: 'right', format: 'int' },
   { header: 'Discount', headerSo: 'Dhimis', key: 'discount', w: 1.1, width: 12, align: 'right', format: 'money' },
-  { header: 'Total', headerSo: 'Wadar', key: 'total', w: 1.2, width: 13, align: 'right', format: 'money' },
-  { header: 'Payment', headerSo: 'Lacag-bixin', key: 'payMethod', w: 1.7, width: 18 },
-  { header: 'Collected by', headerSo: 'Qofka', key: 'collectedBy', w: 1.4, width: 16 },
-  { header: 'Status', headerSo: 'Xaalad', key: 'status', w: 1, width: 11 },
+  { header: 'Total', headerSo: 'Wadar', key: 'total', w: 1.1, width: 12, align: 'right', format: 'money' },
+  { header: 'Paid', headerSo: 'La bixiyay', key: 'paid', w: 1.1, width: 12, align: 'right', format: 'money' },
+  { header: 'Balance', headerSo: 'Haraa', key: 'balance', w: 1.1, width: 12, align: 'right', format: 'money' },
+  { header: 'Payment', headerSo: 'Lacag-bixin', key: 'payMethod', w: 2, width: 24 },
+  { header: 'Collected by', headerSo: 'Qofka', key: 'collectedBy', w: 1.3, width: 16 },
+  { header: 'Status', headerSo: 'Xaalad', key: 'status', w: 1.3, width: 15 },
 ];
+
+const SALES_STATUS_LABEL = {
+  paid: 'Money received', full: 'Fully paid', partial: 'Partly paid', pending: 'Still owes', unpaid: 'Nothing paid', debt: 'Debt',
+};
 
 async function buildSalesSpec(req) {
   const q = req.query || {};
@@ -1545,20 +1614,76 @@ async function buildSalesSpec(req) {
   if (range) filter.createdAt = range;
   if (q.orderId && /^\d+$/.test(String(q.orderId).trim())) filter.number = Number(String(q.orderId).trim());
   if (q.channel && q.channel !== 'all') filter.channel = q.channel;
-  if (q.status === 'paid') filter['payment.status'] = 'paid';
+  // Status is about money, not just the paid flag — an order can be partly paid (see
+  // mark-paid's `amount` / settle-debt), so "paid" here means "some money came in on
+  // it" and the row's Paid/Balance columns say exactly how much.
+  const someMoney = { $or: [{ 'payment.status': 'paid' }, { 'payment.paidAmount': { $gt: 0 } }] };
+  const and = [];
+  if (q.status === 'paid') and.push(someMoney);
+  else if (q.status === 'full') filter['payment.status'] = 'paid';
+  else if (q.status === 'partial') { filter['payment.status'] = { $ne: 'paid' }; filter['payment.paidAmount'] = { $gt: 0 }; }
   else if (q.status === 'pending') filter['payment.status'] = { $ne: 'paid' };
-  if (q.method && q.method !== 'all') {
-    if (q.method === 'online') filter['payment.method'] = 'waafipay';
-    else filter['payment.manualMethodName'] = q.method;
+  else if (q.status === 'unpaid') { filter['payment.status'] = { $ne: 'paid' }; and.push({ $or: [{ 'payment.paidAmount': { $exists: false } }, { 'payment.paidAmount': { $lte: 0 } }] }); }
+  else if (q.status === 'debt') { filter['payment.status'] = { $ne: 'paid' }; filter.debtor = { $ne: null }; }
+
+  // A wallet filter matches every order that wallet actually took money for — including
+  // a partly-paid order whose $2 went to EVC — not just the order's last-used wallet.
+  const methodFilter = q.method && q.method !== 'all' ? q.method : null;
+  if (methodFilter) {
+    if (methodFilter === 'online') filter['payment.method'] = 'waafipay';
+    else {
+      const viaWallet = await PaymentCollection.distinct('order', { restaurant: req.auth.id, methodName: methodFilter, order: { $ne: null } });
+      and.push({ $or: [{ 'payment.manualMethodName': methodFilter }, { _id: { $in: viaWallet } }] });
+    }
   }
+  if (and.length) filter.$and = and;
 
   const orders = await Order.find(filter).sort({ createdAt: 1 }).limit(5000).lean();
+  const collections = orders.length
+    ? await PaymentCollection.find({ restaurant: req.auth.id, order: { $in: orders.map((o) => o._id) } }).sort({ createdAt: 1 }).lean()
+    : [];
+  const collByOrder = new Map();
+  for (const c of collections) {
+    const k = String(c.order);
+    if (!collByOrder.has(k)) collByOrder.set(k, []);
+    collByOrder.get(k).push(c);
+  }
+  const r2 = (n) => Math.round((n || 0) * 100) / 100;
+  let sumViaMethod = 0;
+
   const rows = orders.map((o) => {
     const itemsCount = (o.items || []).reduce((a, it) => a + (it.qty || 0), 0);
-    let payMethod = o.payment?.manualMethodName || '';
-    if (!payMethod && o.payment?.method === 'waafipay') {
-      payMethod = 'Online' + (o.payment.provider ? ' · ' + String(o.payment.provider).toUpperCase() : '');
+    const total = o.total || 0;
+    const isPaid = o.payment?.status === 'paid';
+    const paid = r2(isPaid ? total : Math.min(total, o.payment?.paidAmount || 0));
+    const balance = r2(total - paid);
+
+    // Per-wallet breakdown of what was actually collected, e.g. "Evc $2.00" or
+    // "Evc $1.00 + E-Dahab $3.00". Falls back to the order's wallet name for older
+    // orders/settlements that never wrote per-order ledger rows.
+    const byWallet = new Map();
+    for (const c of collByOrder.get(String(o._id)) || []) {
+      byWallet.set(c.methodName || '—', r2((byWallet.get(c.methodName || '—') || 0) + c.amount));
     }
+    let payMethod;
+    if (byWallet.size) {
+      payMethod = [...byWallet.entries()].map(([n, a]) => (byWallet.size === 1 && a >= total - 0.001 ? n : `${n} $${a.toFixed(2)}`)).join(' + ');
+    } else {
+      payMethod = o.payment?.manualMethodName || '';
+      if (!payMethod && o.payment?.method === 'waafipay') {
+        payMethod = 'Online' + (o.payment.provider ? ' · ' + String(o.payment.provider).toUpperCase() : '');
+      }
+    }
+    if (methodFilter && methodFilter !== 'online') {
+      sumViaMethod += byWallet.size ? (byWallet.get(methodFilter) || 0) : (o.payment?.manualMethodName === methodFilter ? paid : 0);
+    }
+
+    let status;
+    if (isPaid) status = 'Paid';
+    else if (o.debtor) status = paid > 0 ? 'Debt · partly paid' : 'Debt';
+    else if (paid > 0) status = 'Partly paid';
+    else status = 'Pending';
+
     return {
       id: o._id,
       number: o.number,
@@ -1567,17 +1692,22 @@ async function buildSalesSpec(req) {
       itemsCount,
       items: o.items || [],
       discount: o.discount || 0,
-      total: o.total || 0,
+      total,
+      paid,
+      balance,
       payMethod: payMethod || '—',
-      collectedBy: o.payment?.collectedByName || '',
-      status: o.payment?.status === 'paid' ? 'Paid' : 'Pending',
+      collectedBy: o.payment?.collectedByName || [...new Set((collByOrder.get(String(o._id)) || []).map((c) => c.staffName).filter(Boolean))].join(', '),
+      status,
+      payment: o.payment,
       note: o.note || '',
       createdByName: o.createdByName || null,
       phone: o.phone || '',
     };
   });
 
-  const sumTotal = rows.reduce((a, r) => a + r.total, 0);
+  const sumTotal = r2(rows.reduce((a, r) => a + r.total, 0));
+  const sumPaid = r2(rows.reduce((a, r) => a + r.paid, 0));
+  const sumBalance = r2(rows.reduce((a, r) => a + r.balance, 0));
   const sumDiscount = rows.reduce((a, r) => a + r.discount, 0);
   const sumItems = rows.reduce((a, r) => a + r.itemsCount, 0);
 
@@ -1585,24 +1715,29 @@ async function buildSalesSpec(req) {
     `Range: ${from || '—'}  ->  ${to || '—'}`,
     q.orderId ? `Order #${q.orderId}` : null,
     q.channel && q.channel !== 'all' ? `Channel: ${CHANNEL_LABEL[q.channel] || q.channel}` : null,
-    q.status && q.status !== 'all' ? `Status: ${q.status === 'paid' ? 'Paid' : 'Pending'}` : null,
-    q.method && q.method !== 'all' ? `Payment: ${q.method === 'online' ? 'Online' : q.method}` : null,
+    q.status && q.status !== 'all' ? `Status: ${SALES_STATUS_LABEL[q.status] || q.status}` : null,
+    methodFilter ? `Payment: ${methodFilter === 'online' ? 'Online' : methodFilter}` : null,
   ].filter(Boolean);
+
+  const summary = [
+    { label: 'Orders · Dalabyo', value: String(rows.length) },
+    { label: 'Total · Wadar', value: fmtMoney(sumTotal) },
+    { label: 'Paid · La bixiyay', value: fmtMoney(sumPaid) },
+    { label: 'Balance · Haraa', value: fmtMoney(sumBalance) },
+  ];
+  if (methodFilter && methodFilter !== 'online') {
+    summary.push({ label: `Via ${methodFilter} · Lagu qabtay`, value: fmtMoney(sumViaMethod) });
+  }
+  summary.push({ label: 'Discounts · Dhimis', value: fmtMoney(sumDiscount) });
 
   return {
     restaurant: await reportBrand(req.auth.id),
     reportName: 'Sales Report', reportNameSo: 'Warbixinta Iibka',
     filterLines,
-    summary: [
-      { label: 'Orders · Dalabyo', value: String(rows.length) },
-      { label: 'Total · Wadar', value: fmtMoney(sumTotal) },
-      { label: 'Discounts · Dhimis', value: fmtMoney(sumDiscount) },
-      { label: 'Items · Alaab', value: String(sumItems) },
-      { label: 'Avg order · Celceli', value: fmtMoney(rows.length ? sumTotal / rows.length : 0) },
-    ],
+    summary,
     columns: SALES_COLUMNS,
     rows,
-    totalsRow: { label: 'TOTAL', values: { discount: sumDiscount, total: sumTotal, itemsCount: sumItems } },
+    totalsRow: { label: 'TOTAL', values: { discount: sumDiscount, total: sumTotal, paid: sumPaid, balance: sumBalance, itemsCount: sumItems } },
   };
 }
 

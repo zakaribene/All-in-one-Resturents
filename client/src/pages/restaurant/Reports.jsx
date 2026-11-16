@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { BarChart3, Receipt, Package, Wallet, FileSpreadsheet, FileText, RotateCcw, Search } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
+import { getSocket } from '../../lib/socket';
 import ReceiptModal from '../../components/ReceiptModal';
 
 const money = (n) => {
@@ -171,6 +172,39 @@ function ReportView({ kind }) {
       .finally(() => { setBusy(false); setLoaded(true); });
   }, [kind, params, isWallets, month]);
 
+  // Live: re-run the report the moment anything happens to an order (new order, paid,
+  // partly paid, edited, moved to Deyn, deleted) — the server already broadcasts these
+  // to the restaurant's room. Quietly, without the loading fade, and coalesced so a burst
+  // of events only triggers one refetch. A slow poll covers the few money moves that
+  // don't emit an order event (e.g. a customer paying down their whole Deyn balance).
+  const quietRefresh = useCallback(() => {
+    if (isWallets && !month) return;
+    api.get(`/restaurant/reports/${kind}`, { params: params() })
+      .then(({ data: d }) => setData(d))
+      .catch(() => {});
+  }, [kind, params, isWallets, month]);
+
+  useEffect(() => {
+    if (!me?.id) return;
+    const socket = getSocket();
+    socket.emit('join:restaurant', me.id);
+    let t = null;
+    const onChange = () => { clearTimeout(t); t = setTimeout(quietRefresh, 400); };
+    socket.on('order:new', onChange);
+    socket.on('order:updated', onChange);
+    socket.on('order:deleted', onChange);
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') quietRefresh(); }, 20000);
+    window.addEventListener('focus', onChange);
+    return () => {
+      clearTimeout(t);
+      clearInterval(poll);
+      socket.off('order:new', onChange);
+      socket.off('order:updated', onChange);
+      socket.off('order:deleted', onChange);
+      window.removeEventListener('focus', onChange);
+    };
+  }, [me?.id, quietRefresh]);
+
   // Auto-run the report as filters change — no need to press a button.
   // Debounced so typing an Order ID doesn't fire a request per keystroke.
   useEffect(() => {
@@ -206,6 +240,11 @@ function ReportView({ kind }) {
       const v = r[key];
       if (!v || v === '—') continue;
       if (isSales && String(v).startsWith('Online')) { set.add('online'); continue; }
+      if (isSales) {
+        // "Evc $2.00 + E-Dahab $1.00" → Evc, E-Dahab
+        for (const part of String(v).split(' + ')) set.add(part.replace(/\s+\$[\d.,]+$/, '').trim());
+        continue;
+      }
       set.add(v);
     }
     return [...set].sort();
@@ -258,8 +297,12 @@ function ReportView({ kind }) {
               <Field label="Xaalad · Status">
                 <select className="field-input" value={status} onChange={(e) => setStatus(e.target.value)} style={{ minWidth: 130 }}>
                   <option value="all">Dhammaan · All</option>
-                  <option value="pending">Sugaya · Pending</option>
-                  <option value="paid">La bixiyay · Paid</option>
+                  <option value="paid">La bixiyay · Paid (wax laga bixiyay)</option>
+                  <option value="full">Si buuxda · Fully paid</option>
+                  <option value="partial">Qayb · Partly paid</option>
+                  <option value="pending">Sugaya · Still owes</option>
+                  <option value="unpaid">Waxba lama bixin · Nothing paid</option>
+                  <option value="debt">Deyn · Debt</option>
                 </select>
               </Field>
             </>
@@ -358,7 +401,7 @@ function ReportView({ kind }) {
       {loaded && data && !!rowCount && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', opacity: busy ? 0.55 : 1, transition: 'opacity .15s' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isSales ? 1000 : isProducts ? 780 : isWallets ? 820 : 720 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isSales ? 1200 : isProducts ? 780 : isWallets ? 820 : 720 }}>
               <thead>
                 <tr style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
                   {data.columns.map((c) => (
@@ -382,9 +425,12 @@ function ReportView({ kind }) {
                       <td key={c.key} style={{
                         padding: '10px 16px', textAlign: c.align === 'right' ? 'right' : 'left',
                         whiteSpace: c.key === 'note' ? 'normal' : 'nowrap',
-                        fontWeight: c.key === 'total' || c.key === 'amount' || c.key === 'revenue' ? 700 : 400,
+                        fontWeight: c.key === 'total' || c.key === 'amount' || c.key === 'revenue' || c.key === 'paid' || c.key === 'balance' || c.key === 'status' ? 700 : 400,
                         color: c.key === 'amount'
                           ? (isWallets ? (row.amount < 0 ? 'var(--danger)' : 'var(--success)') : 'var(--danger)')
+                          : isSales && c.key === 'paid' ? (row.paid > 0 ? 'var(--success)' : 'var(--muted-3)')
+                          : isSales && c.key === 'balance' ? (row.balance > 0 ? 'var(--warning-fg)' : 'var(--muted-3)')
+                          : isSales && c.key === 'status' ? (row.status === 'Paid' ? 'var(--success)' : row.status.startsWith('Debt') ? 'var(--accent)' : 'var(--warning-fg)')
                           : 'var(--text)',
                       }}>
                         {fmtCell(row[c.key], c.format)}

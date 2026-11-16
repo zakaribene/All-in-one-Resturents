@@ -56,11 +56,23 @@ function formatDateTime(date) {
 function isPosOrder(o) { return o.channel === 'pos'; }
 function isPaid(o) { return o.payment?.status === 'paid'; }
 function isDebt(o) { return !!o.debtorId; }
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+function paidSoFar(o) { return round2(o.payment?.paidAmount || 0); }
+function remainingOf(o) { return round2(o.total - paidSoFar(o)); }
+// Some money already collected via a partial "Bixi", but the order isn't fully paid yet.
+function isPartlyPaid(o) { return !isPaid(o) && paidSoFar(o) > 0; }
 
 function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   const [methods, setMethods] = useState(null);
   const [methodId, setMethodId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const remaining = remainingOf(order);
+  const already = paidSoFar(order);
+  const [amountText, setAmountText] = useState(remaining.toFixed(2));
+  const amount = round2(amountText);
+  const left = round2(remaining - amount);
+  const amountValid = amount > 0 && amount <= remaining + 0.001;
+  const isPartial = amountValid && left > 0.001;
 
   useEffect(() => {
     api.get('/restaurant/pos/payment-options').then((r) => {
@@ -71,12 +83,16 @@ function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   }, []);
 
   async function submit() {
-    if (busy) return;
+    if (busy || !amountValid) return;
     setBusy(true);
     try {
-      const { data } = await api.post(`/restaurant/orders/${order.id}/mark-paid`, { manualMethodId: methodId });
+      const { data } = await api.post(`/restaurant/orders/${order.id}/mark-paid`, { manualMethodId: methodId, amount });
       onPaid(data);
-      addToast({ title: 'Waa la bixiyay · Marked paid', body: `#${data.number}`, tone: 'success' });
+      if (data.payment?.status === 'paid') {
+        addToast({ title: 'Waa la bixiyay · Marked paid', body: `#${data.number}`, tone: 'success' });
+      } else {
+        addToast({ title: 'Qayb waa la bixiyay · Partly paid', body: `#${data.number} · Haraa $${remainingOf(data).toFixed(2)}`, tone: 'success' });
+      }
       onClose();
     } catch (err) {
       addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
@@ -88,7 +104,35 @@ function MarkPaidModal({ order, onClose, onPaid, addToast }) {
   return (
     <Modal onClose={onClose} width={380}>
       <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Bixi dalabka · Mark as paid</div>
-      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>Order #{order.number} · ${order.total.toFixed(2)}</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>
+        Order #{order.number} · ${order.total.toFixed(2)}
+        {already > 0 && <> · La bixiyay ${already.toFixed(2)} · <b style={{ color: 'var(--warning-fg)' }}>Haraa ${remaining.toFixed(2)}</b></>}
+      </div>
+      <label className="field-label">Lacagta la bixiyay · Amount paid</label>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)', fontWeight: 700 }}>$</span>
+          <input
+            className="field-input" type="number" inputMode="decimal" min="0" step="0.01" max={remaining}
+            value={amountText} onChange={(e) => setAmountText(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            style={{ paddingLeft: 26, fontWeight: 800, width: '100%' }}
+          />
+        </div>
+        <button type="button" className="btn-outline btn-sm" style={{ height: 38 }} onClick={() => setAmountText(remaining.toFixed(2))}>Dhammaan · Full</button>
+      </div>
+      <div style={{ fontSize: 12, marginBottom: 16, minHeight: 16 }}>
+        {!amountValid && amountText !== '' && (
+          <span style={{ color: 'var(--danger)' }}>
+            {amount <= 0 ? 'Qadarka waa inuu ka weyn yahay 0 · Must be more than 0' : `Kama badnaan karo $${remaining.toFixed(2)} · Can't exceed what's owed`}
+          </span>
+        )}
+        {isPartial && (
+          <span style={{ color: 'var(--warning-fg)', fontWeight: 700 }}>
+            Haraa · Balance left: ${left.toFixed(2)} — dalabku wuxuu ku jiri doonaa Pending
+          </span>
+        )}
+      </div>
       {methods === null && <div className="text-muted" style={{ padding: '4px 0 16px' }}>Loading…</div>}
       {!!methods?.length && (
         <>
@@ -102,7 +146,9 @@ function MarkPaidModal({ order, onClose, onPaid, addToast }) {
       )}
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
-        <button className="btn btn-primary" disabled={busy || (!!methods?.length && !methodId)} onClick={submit}>{busy ? 'Diraya…' : 'Xaqiiji · Confirm'}</button>
+        <button className="btn btn-primary" disabled={busy || !amountValid || (!!methods?.length && !methodId)} onClick={submit}>
+          {busy ? 'Diraya…' : isPartial ? `Bixi $${amount.toFixed(2)} · Pay part` : 'Xaqiiji · Confirm'}
+        </button>
       </div>
     </Modal>
   );
@@ -194,7 +240,10 @@ function AssignDebtModal({ order, onClose, onAssigned, addToast }) {
   return (
     <Modal onClose={onClose} width={480}>
       <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Deyn u dir · Charge to customer account</div>
-      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>Order #{order.number} · ${order.total.toFixed(2)}</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-2)', marginBottom: 16 }}>
+        Order #{order.number} · ${order.total.toFixed(2)}
+        {isPartlyPaid(order) && <> · La bixiyay ${paidSoFar(order).toFixed(2)} · <b style={{ color: 'var(--warning-fg)' }}>Deyn ahaan · Goes to account: ${remainingOf(order).toFixed(2)}</b></>}
+      </div>
       <label className="field-label">Macmiil · Customer *</label>
       <div style={{ marginBottom: 16 }}>
         <CustomerPicker value={customer} onChange={setCustomer} />
@@ -381,7 +430,15 @@ export default function Orders() {
                 )}
               </div>
               <div className="mono">{o.phone ? <a href={`tel:${o.phone}`} style={{ color: 'inherit' }}>{o.phone}</a> : <span style={{ color: 'var(--muted-3)' }}>—</span>}</div>
-              <div style={{ fontWeight: 800 }}>${o.total.toFixed(2)}</div>
+              <div style={{ fontWeight: 800 }}>
+                ${o.total.toFixed(2)}
+                {isPartlyPaid(o) && (
+                  <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, lineHeight: 1.35 }}>
+                    <div style={{ color: 'var(--success)' }}>La bixiyay ${paidSoFar(o).toFixed(2)}</div>
+                    <div style={{ color: 'var(--warning-fg)' }}>Haraa ${remainingOf(o).toFixed(2)}</div>
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                 {isDebt(o) ? (
                   <span style={{ background: 'color-mix(in srgb, var(--accent) 14%, var(--surface))', color: 'var(--accent)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -390,7 +447,9 @@ export default function Orders() {
                 ) : isPosOrder(o) ? (
                   isPaid(o)
                     ? <span style={{ background: 'var(--success-bg)', color: 'var(--success)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>La bixiyay · Paid</span>
-                    : <span style={{ background: 'var(--warning-bg)', color: 'var(--warning-fg)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>Sugaya · Pending</span>
+                    : isPartlyPaid(o)
+                      ? <span style={{ background: 'var(--warning-bg)', color: 'var(--warning-fg)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>Qayb · Partly paid</span>
+                      : <span style={{ background: 'var(--warning-bg)', color: 'var(--warning-fg)', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>Sugaya · Pending</span>
                 ) : (
                   <>
                     <span style={{ background: s.bg, color: s.fg, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 8 }}>{s.label}</span>
@@ -407,7 +466,7 @@ export default function Orders() {
                     <Pencil size={13} strokeWidth={2.5} /> Edit
                   </button>
                 )}
-                {isPaid(o) && isPosOrder(o) && !isDebt(o) && canDelete && (
+                {(isPaid(o) || isPartlyPaid(o)) && isPosOrder(o) && !isDebt(o) && canDelete && (
                   <button
                     className="btn-outline btn-sm" style={{ height: 32, color: 'var(--danger)' }}
                     title="Ka noqo Pending · Undo (kolkii 'Paid' lagu riixay khalad)" onClick={() => revertToPending(o.id)}
@@ -450,7 +509,7 @@ export default function Orders() {
                 )}
                 {/* A paid order — or one charged to a customer account — is a financial
                     record; the server refuses to delete it too. */}
-                {canDelete && !isPaid(o) && !isDebt(o) && (
+                {canDelete && !isPaid(o) && !isDebt(o) && !isPartlyPaid(o) && (
                   <button
                     title="Tirtir · Delete" onClick={() => removeOrder(o.id)}
                     style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

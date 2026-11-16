@@ -22,10 +22,11 @@ const PaymentSchema = new mongoose.Schema({
   manualMethod: { type: mongoose.Schema.Types.ObjectId, ref: 'PaymentMethod', default: null },
   manualMethodName: { type: String, default: null },
   collectedByName: { type: String, default: null },
-  // Running total settled toward this debt order so far — only ever set by partial
-  // settlements via /orders/:id/settle-debt (see restaurant.js). A plain POS order pays
-  // in one shot and goes straight to `status: 'paid'`, so this stays 0 for those; it only
-  // matters for a debt order that's been paid down in pieces but hasn't reached its total.
+  // Running total collected toward this order so far. Set by partial payments — either
+  // a debt order paid down via /orders/:id/settle-debt, or a pending POS order where
+  // "Bixi" was given less than the total (/orders/:id/mark-paid with `amount`). The
+  // order stays pending until this reaches `total`, then flips to `status: 'paid'`.
+  // A one-shot full payment also ends with this equal to the total.
   paidAmount: { type: Number, default: 0 },
 }, { _id: false });
 
