@@ -1168,6 +1168,38 @@ router.post('/customers', requirePermission('customers'), async (req, res) => {
   res.status(201).json(mapCustomer(customer));
 });
 
+// Rename / change phone. Balance is never editable here — it only moves through debt
+// orders and payments, so the money trail stays intact.
+router.put('/customers/:id', requirePermission('customers'), async (req, res) => {
+  const customer = await Customer.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const name = String(req.body?.name ?? customer.name).trim();
+  if (!name) return res.status(400).json({ error: 'Name is required · Magaca waa lagama maarmaan' });
+  const before = customer.name;
+  customer.name = name;
+  if (req.body?.phone !== undefined) customer.phone = String(req.body.phone || '').trim();
+  await customer.save();
+  logStoreActivity(req, {
+    module: 'customers', action: 'Update',
+    message: before !== name ? `Customer "${before}" renamed to "${name}"` : `Customer "${name}" updated`,
+  });
+  res.json(mapCustomer(customer));
+});
+
+// Only a customer who owes nothing can be removed — anyone with an outstanding balance
+// (or a still-unpaid debt order) must be settled first so no debt silently disappears.
+router.delete('/customers/:id', requirePermission('customers'), async (req, res) => {
+  const customer = await Customer.findOne({ _id: req.params.id, restaurant: req.auth.id });
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const openDebt = await Order.exists({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } });
+  if ((customer.balance || 0) > 0.001 || openDebt) {
+    return res.status(400).json({ error: 'Macmiilkan deyn ayaa lagu leeyahay — lama tirtiri karo · This customer still owes money and cannot be deleted' });
+  }
+  await customer.deleteOne();
+  logStoreActivity(req, { module: 'customers', action: 'Delete', message: `Customer "${customer.name}" deleted` });
+  res.json({ ok: true });
+});
+
 router.get('/customers/:id', requirePermission('customers'), async (req, res) => {
   const customer = await Customer.findOne({ _id: req.params.id, restaurant: req.auth.id }).lean();
   if (!customer) return res.status(404).json({ error: 'Not found' });

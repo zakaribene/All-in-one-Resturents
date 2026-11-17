@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Search, HandCoins, Phone, Receipt, Wallet, Printer, Plus, Pencil } from 'lucide-react';
+import { Search, HandCoins, Phone, Receipt, Wallet, Printer, Plus, Pencil, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '../../lib/api';
 import Modal from '../../components/Modal';
 import ReceiptModal from '../../components/ReceiptModal';
@@ -430,53 +430,126 @@ function CustomerDetailModal({ customerId, restaurant, onClose, addToast, onSett
   );
 }
 
+// Rename a customer or fix their phone number. Balance isn't editable — it only moves
+// through debt orders and payments.
+function EditCustomerModal({ customer, onClose, onSaved, addToast }) {
+  const [name, setName] = useState(customer.name || '');
+  const [phone, setPhone] = useState(customer.phone || '');
+  const [busy, setBusy] = useState(false);
+
+  async function save(e) {
+    e?.preventDefault();
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    try {
+      const { data } = await api.put(`/restaurant/customers/${customer.id}`, { name: name.trim(), phone: phone.trim() });
+      addToast({ title: 'Waa la keydiyay · Customer updated', body: data.name, tone: 'success' });
+      onSaved(data);
+      onClose();
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={380}>
+      <form onSubmit={save}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Wax ka beddel macmiilka · Edit customer</div>
+        <label className="field-label">Magaca · Name</label>
+        <input className="field-input" style={{ marginBottom: 12 }} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <label className="field-label">Lambarka · Phone</label>
+        <input className="field-input" style={{ marginBottom: 20 }} value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-outline" onClick={onClose}>Ka noqo · Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>{busy ? 'Keydinaya…' : 'Keydi · Save'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+const iconBtn = {
+  width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: '1px solid var(--border-strong)',
+  background: 'var(--surface)', color: 'var(--muted-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+};
+
 export default function Customers() {
-  const { addToast, me } = useOutletContext();
+  const { addToast, me, confirm } = useOutletContext();
   const [customers, setCustomers] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all'); // 'all' | 'owing'
   const [selectedId, setSelectedId] = useState(null);
+  const [editing, setEditing] = useState(null);
 
-  // No search typed: only who still owes something — the "who do I need to collect
-  // from" view, so a customer drops off the list the moment they're fully paid up.
-  // Typing a search hits the backend without that filter, so it can still find someone
-  // by name even after their balance has reached $0 (reusing the same record for a new
-  // tab later, rather than the picker creating a duplicate "customer").
   function load() {
     const q = query.trim();
-    const params = q ? { q } : { owing: 1 };
-    api.get('/restaurant/customers', { params }).then((r) => setCustomers(r.data)).catch((e) => setError(apiErrorMessage(e)));
+    const params = {};
+    if (q) params.q = q;
+    if (filter === 'owing') params.owing = 1;
+    api.get('/restaurant/customers', { params }).then((r) => { setCustomers(r.data); setError(''); }).catch((e) => setError(apiErrorMessage(e)));
   }
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, filter]);
 
-  const totalOwed = useMemo(() => (customers || []).reduce((a, c) => a + c.balance, 0), [customers]);
-  const debtorCount = useMemo(() => (customers || []).filter((c) => c.balance > 0).length, [customers]);
+  async function remove(c) {
+    if (c.balance > 0.001) return;
+    const ok = await confirm({
+      title: `Tirtir "${c.name}"? · Delete customer?`,
+      body: 'Macmiilkan waa la tirtiri doonaa · This customer will be removed permanently.',
+      tone: 'danger', confirmLabel: 'Tirtir · Delete',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/restaurant/customers/${c.id}`);
+      setCustomers((prev) => (prev || []).filter((x) => x.id !== c.id));
+      addToast({ title: 'Waa la tirtiray · Customer deleted', body: c.name, tone: 'success' });
+    } catch (err) {
+      addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
+    }
+  }
+
+  const totalOwed = useMemo(() => (customers || []).reduce((a, c) => a + Math.max(0, c.balance), 0), [customers]);
+  const debtorCount = useMemo(() => (customers || []).filter((c) => c.balance > 0.001).length, [customers]);
 
   return (
     <div>
       <div style={{ marginBottom: 18 }}>
         <h1 className="page-title" style={{ fontSize: 24 }}>Macaamiisha · Customers</h1>
-        <p className="page-sub">Macaamiisha deynta leh iyo dajinta lacagtooda · Customers with store credit ("Deyn") and settling what they owe.</p>
+        <p className="page-sub">Dhammaan macaamiisha, deynta iyo dajinta lacagtooda · All customers, their store credit ("Deyn") and settling what they owe.</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 20 }}>
         <div className="stat-card">
-          <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, marginBottom: 8 }}>Total</div>
+          <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, marginBottom: 8 }}>Deynta guud · Total owed</div>
           <div style={{ fontSize: 26, fontWeight: 800 }}>{money(totalOwed)}</div>
         </div>
         <div className="stat-card">
           <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, marginBottom: 8 }}>Macaamiisha deynta leh · Customers owing</div>
           <div style={{ fontSize: 26, fontWeight: 800 }}>{debtorCount}</div>
         </div>
+        {filter === 'all' && (
+          <div className="stat-card">
+            <div style={{ fontSize: 12, color: 'var(--muted-2)', fontWeight: 700, marginBottom: 8 }}>Dhammaan macaamiisha · All customers</div>
+            <div style={{ fontSize: 26, fontWeight: 800 }}>{customers?.length ?? 0}</div>
+          </div>
+        )}
       </div>
 
-      <div style={{ position: 'relative', maxWidth: 320, marginBottom: 16 }}>
-        <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
-        <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi macmiil… · Search customers…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 320 }}>
+          <Search size={14} strokeWidth={2.25} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-3)' }} />
+          <input className="field-input" style={{ paddingLeft: 32 }} placeholder="Raadi macmiil… · Search customers…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className={'chip' + (filter === 'all' ? ' active' : '')} onClick={() => setFilter('all')}>Dhammaan · All</button>
+          <button type="button" className={'chip' + (filter === 'owing' ? ' active' : '')} onClick={() => setFilter('owing')}>Deynta leh · Owing</button>
+        </div>
       </div>
 
       {error && <div style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</div>}
@@ -486,7 +559,9 @@ export default function Customers() {
         <div className="card" style={{ padding: '44px 24px', textAlign: 'center' }}>
           <HandCoins size={30} strokeWidth={1.6} color="var(--muted-3)" style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: 700, fontSize: 15 }}>
-            {query.trim() ? 'Wax macmiil ah lama helin · No matches' : 'Cid deyn ku leh ma jirto hadda · No one owes anything right now'}
+            {query.trim() ? 'Wax macmiil ah lama helin · No matches'
+              : filter === 'owing' ? 'Cid deyn ku leh ma jirto hadda · No one owes anything right now'
+              : 'Weli macmiil ma jiro · No customers yet'}
           </div>
           {!query.trim() && (
             <div style={{ fontSize: 13, color: 'var(--muted-2)', marginTop: 4 }}>
@@ -498,41 +573,72 @@ export default function Customers() {
 
       {customers && !!customers.length && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-          <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 40px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
-            <div>Macmiil · Customer</div><div>Lambar · Phone</div><div style={{ textAlign: 'right' }}>Wadarta · Balance</div><div />
+          <div className="rgrid-table" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 110px', gap: 12, padding: '13px 20px', background: 'var(--panel)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', color: 'var(--muted-3)', textTransform: 'uppercase' }}>
+            <div>Macmiil · Customer</div><div>Lambar · Phone</div><div style={{ textAlign: 'right' }}>Wadarta · Balance</div><div style={{ textAlign: 'right' }}>Ficil · Actions</div>
           </div>
-          {customers.map((c) => (
-            <button
-              key={c.id} onClick={() => setSelectedId(c.id)} className="rgrid-table"
-              style={{
-                display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 40px', gap: 12, padding: '13px 20px',
-                borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13, width: '100%', textAlign: 'left',
-                border: 'none', borderBottomWidth: '1px', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>{c.name}</div>
-              <div className="mono" style={{ color: 'var(--muted-3)' }}>{c.phone || '—'}</div>
-              <div style={{ textAlign: 'right', fontWeight: 800, color: c.balance > 0 ? 'var(--danger)' : 'var(--success)' }}>{money(c.balance)}</div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', color: 'var(--muted-3)' }}>
-                {c.balance > 0 ? <Receipt size={14} strokeWidth={2.25} /> : <Wallet size={14} strokeWidth={2.25} />}
+          {customers.map((c) => {
+            const owes = c.balance > 0.001;
+            return (
+              <div
+                key={c.id} onClick={() => setSelectedId(c.id)} className="rgrid-table"
+                style={{
+                  display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 110px', gap: 12, padding: '11px 20px',
+                  borderBottom: '1px solid var(--border-soft)', alignItems: 'center', fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: 'var(--muted-3)', display: 'flex' }}>
+                    {owes ? <Receipt size={14} strokeWidth={2.25} /> : <Wallet size={14} strokeWidth={2.25} />}
+                  </span>
+                  {c.name}
+                </div>
+                <div className="mono" style={{ color: 'var(--muted-3)' }}>{c.phone || '—'}</div>
+                <div style={{ textAlign: 'right', fontWeight: 800, color: owes ? 'var(--danger)' : 'var(--success)' }}>{money(c.balance)}</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" title="Wax ka beddel · Edit" style={iconBtn} onClick={() => setEditing(c)}>
+                    <Pencil size={13} strokeWidth={2.25} />
+                  </button>
+                  <button
+                    type="button" disabled={owes} onClick={() => remove(c)}
+                    title={owes ? 'Lama tirtiri karo — deyn ayaa lagu leeyahay · Cannot delete: customer still owes money' : 'Tirtir · Delete'}
+                    style={{
+                      ...iconBtn,
+                      ...(owes
+                        ? { opacity: 0.35, cursor: 'not-allowed' }
+                        : { color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)' }),
+                    }}
+                  >
+                    <Trash2 size={13} strokeWidth={2.25} />
+                  </button>
+                </div>
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
+      )}
+
+      {editing && (
+        <EditCustomerModal
+          customer={editing} addToast={addToast}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => setCustomers((prev) => (prev || []).map((c) => (c.id === updated.id ? updated : c)))}
+        />
       )}
 
       {selectedId && (
         <CustomerDetailModal
           customerId={selectedId} restaurant={me} addToast={addToast}
           onClose={() => setSelectedId(null)}
-          onSettled={(updated) => setCustomers((prev) => {
-            if (!prev) return prev;
-            // Fully paid off, and we're on the default "who still owes" view (no search
-            // typed) — this customer drops off the list immediately rather than sitting
-            // there at $0.00 until the next reload.
-            if (updated.balance <= 0 && !query.trim()) return prev.filter((c) => c.id !== updated.id);
-            return prev.map((c) => (c.id === updated.id ? updated : c));
-          })}
+          onSettled={(updated) => {
+            // Undo passes no customer back — just refetch the list.
+            if (!updated) { load(); return; }
+            setCustomers((prev) => {
+              if (!prev) return prev;
+              // On the "Owing" filter a fully paid-off customer drops off immediately.
+              if (updated.balance <= 0.001 && filter === 'owing') return prev.filter((c) => c.id !== updated.id);
+              return prev.map((c) => (c.id === updated.id ? updated : c));
+            });
+          }}
         />
       )}
     </div>
