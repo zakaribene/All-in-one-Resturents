@@ -83,6 +83,24 @@ export default function ReceiptModal({ order, restaurant, onClose }) {
             <span>Total</span>
             <span>${order.total.toFixed(2)}</span>
           </div>
+          {/* Only for a partly-paid order — fully paid or fully unpaid receipts show just the Total. */}
+          {(() => {
+            const paid = Math.round((order.payment?.paidAmount || 0) * 100) / 100;
+            const left = Math.round((order.total - paid) * 100) / 100;
+            if (order.payment?.status === 'paid' || !(paid > 0) || !(left > 0)) return null;
+            return (
+              <div style={{ marginTop: 6, fontSize: 13.5, fontWeight: 800, color: '#000' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <span>La bixiyay · Paid</span>
+                  <span>${paid.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--text)', paddingTop: 4 }}>
+                  <span>Haraa · Balance</span>
+                  <span>${left.toFixed(2)}</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {!!restaurant?.receiptThankYouMessage && (

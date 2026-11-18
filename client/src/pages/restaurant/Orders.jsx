@@ -531,7 +531,13 @@ export default function Orders() {
         </div>
       </div>
 
-      {receiptOrder && <ReceiptModal order={receiptOrder} restaurant={me} onClose={() => setReceiptOrder(null)} />}
+      {/* Look the order up in the live list so the receipt follows any payment/edit made while it's open. */}
+      {receiptOrder && (
+        <ReceiptModal
+          order={orders.find((o) => o.id === receiptOrder.id) || receiptOrder}
+          restaurant={me} onClose={() => setReceiptOrder(null)}
+        />
+      )}
       {addItemsOrder && (
         <AddItemsModal
           order={addItemsOrder} addToast={addToast}
