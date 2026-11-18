@@ -497,18 +497,27 @@ export default function Customers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, filter]);
 
+  const canDeleteCustomer = me?.role !== 'staff' || me?.permissions?.includes('customers_delete');
+
   async function remove(c) {
-    if (c.balance > 0.001) return;
+    if (!canDeleteCustomer) return;
+    const owes = c.balance > 0.001;
     const ok = await confirm({
       title: `Tirtir "${c.name}"? · Delete customer?`,
-      body: 'Macmiilkan waa la tirtiri doonaa · This customer will be removed permanently.',
+      body: owes
+        ? `Macmiilkan ${money(c.balance)} ayaa lagu leeyahay. Deyntaas waa la tirtiri doonaa, dalabyadiisa aan la bixinna waa laga saarayaa Orders iyo Reports. Lacagta horay loo bixiyay wallet-ka way ku hartaa. · This customer owes ${money(c.balance)}. The debt will be written off and their unpaid orders removed from Orders and Reports. Money already paid stays in the wallet.`
+        : 'Macmiilkan waa la tirtiri doonaa · This customer will be removed permanently.',
       tone: 'danger', confirmLabel: 'Tirtir · Delete',
     });
     if (!ok) return;
     try {
-      await api.delete(`/restaurant/customers/${c.id}`);
+      const { data } = await api.delete(`/restaurant/customers/${c.id}`);
       setCustomers((prev) => (prev || []).filter((x) => x.id !== c.id));
-      addToast({ title: 'Waa la tirtiray · Customer deleted', body: c.name, tone: 'success' });
+      addToast({
+        title: 'Waa la tirtiray · Customer deleted',
+        body: c.name + (data?.deletedOrders ? ` · ${data.deletedOrders} dalab ayaa la tirtiray · order(s) removed` : ''),
+        tone: 'success',
+      });
     } catch (err) {
       addToast({ title: 'Way fashilantay · Failed', body: apiErrorMessage(err), tone: 'error' });
     }
@@ -598,18 +607,14 @@ export default function Customers() {
                   <button type="button" title="Wax ka beddel · Edit" style={iconBtn} onClick={() => setEditing(c)}>
                     <Pencil size={13} strokeWidth={2.25} />
                   </button>
-                  <button
-                    type="button" disabled={owes} onClick={() => remove(c)}
-                    title={owes ? 'Lama tirtiri karo — deyn ayaa lagu leeyahay · Cannot delete: customer still owes money' : 'Tirtir · Delete'}
-                    style={{
-                      ...iconBtn,
-                      ...(owes
-                        ? { opacity: 0.35, cursor: 'not-allowed' }
-                        : { color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)' }),
-                    }}
-                  >
-                    <Trash2 size={13} strokeWidth={2.25} />
-                  </button>
+                  {canDeleteCustomer && (
+                    <button
+                      type="button" onClick={() => remove(c)} title="Tirtir · Delete"
+                      style={{ ...iconBtn, color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)' }}
+                    >
+                      <Trash2 size={13} strokeWidth={2.25} />
+                    </button>
+                  )}
                 </div>
               </div>
             );

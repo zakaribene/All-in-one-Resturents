@@ -162,8 +162,13 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
       return prev.filter((p) => p !== id && !tiedSubIds.includes(p));
     });
   }
+  // Ticking an action also grants the page it lives on — it's useless without it.
   function toggleSub(id) {
-    setPermissions((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+    setPermissions((prev) => {
+      if (prev.includes(id)) return prev.filter((p) => p !== id);
+      const pageId = SUB_PERMISSIONS.find((s) => s.id === id)?.pageId;
+      return [...prev, id, ...(pageId && !prev.includes(pageId) ? [pageId] : [])];
+    });
   }
 
   async function submit(e) {
@@ -223,19 +228,21 @@ function StaffModal({ title, submitLabel, initial, isEdit, onClose, onSubmit, on
           ))}
         </div>
 
-        {SUB_PERMISSIONS.some((s) => permissions.includes(s.pageId)) && (
-          <>
-            <label className="field-label">Dhaqdhaqaaqa gaarka ah · Extra permissions</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, border: '1px solid var(--border-soft)', borderRadius: 10, padding: 12 }}>
-              {SUB_PERMISSIONS.filter((s) => permissions.includes(s.pageId)).map((s) => (
-                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permissions.includes(s.id)} onChange={() => toggleSub(s.id)} />
+        <label className="field-label">Dhaqdhaqaaqa gaarka ah · Extra permissions</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, border: '1px solid var(--border-soft)', borderRadius: 10, padding: 12 }}>
+          {SUB_PERMISSIONS.map((s) => {
+            const page = NAV_PAGES.find((p) => p.id === s.pageId);
+            return (
+              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={permissions.includes(s.id)} onChange={() => toggleSub(s.id)} />
+                <span>
                   {s.so} · {s.en}
-                </label>
-              ))}
-            </div>
-          </>
-        )}
+                  {page && <span style={{ color: 'var(--muted-3)', fontSize: 11.5 }}> — {page.en}</span>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
 
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

@@ -1186,18 +1186,35 @@ router.put('/customers/:id', requirePermission('customers'), async (req, res) =>
   res.json(mapCustomer(customer));
 });
 
-// Only a customer who owes nothing can be removed — anyone with an outstanding balance
-// (or a still-unpaid debt order) must be settled first so no debt silently disappears.
+// Removes a customer — including one who still owes money (the debt is written off).
+// Their still-open debt orders (unpaid or partly paid) are deleted with them, so they
+// vanish from Orders and Reports. Money already collected stays in its wallet (its
+// PaymentCollection ledger rows are kept), and fully-paid orders stay as real sales.
+// Staff need the `customers_delete` sub-permission; the owner always can.
 router.delete('/customers/:id', requirePermission('customers'), async (req, res) => {
+  if (req.auth.role === 'staff' && !req.auth.permissions?.includes('customers_delete')) {
+    return res.status(403).json({ error: 'You do not have permission to delete customers · Fasax kuma lihid' });
+  }
   const customer = await Customer.findOne({ _id: req.params.id, restaurant: req.auth.id });
   if (!customer) return res.status(404).json({ error: 'Not found' });
-  const openDebt = await Order.exists({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } });
-  if ((customer.balance || 0) > 0.001 || openDebt) {
-    return res.status(400).json({ error: 'Macmiilkan deyn ayaa lagu leeyahay — lama tirtiri karo · This customer still owes money and cannot be deleted' });
+
+  const openOrders = await Order.find({ restaurant: req.auth.id, debtor: customer._id, 'payment.status': { $ne: 'paid' } })
+    .select('_id number').lean();
+  if (openOrders.length) {
+    await Order.deleteMany({ _id: { $in: openOrders.map((o) => o._id) }, restaurant: req.auth.id });
+    for (const o of openOrders) emitToRestaurant(req.auth.id, 'order:deleted', { id: String(o._id) });
   }
+  await DebtPayment.deleteMany({ restaurant: req.auth.id, customer: customer._id });
   await customer.deleteOne();
-  logStoreActivity(req, { module: 'customers', action: 'Delete', message: `Customer "${customer.name}" deleted` });
-  res.json({ ok: true });
+
+  const owed = Math.round((customer.balance || 0) * 100) / 100;
+  logStoreActivity(req, {
+    module: 'customers', action: 'Delete',
+    message: `Customer "${customer.name}" deleted`
+      + (owed > 0.001 ? ` — ${fmtMoney(owed)} debt written off` : '')
+      + (openOrders.length ? `, order(s) ${openOrders.map((o) => `#${o.number}`).join(', ')} removed` : ''),
+  });
+  res.json({ ok: true, deletedOrders: openOrders.length });
 });
 
 router.get('/customers/:id', requirePermission('customers'), async (req, res) => {

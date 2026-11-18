@@ -6,7 +6,7 @@ const PAGE_IDS = ['overview', 'orders', 'pos', 'payments', 'paymethods', 'transf
 // pos_debt: can charge an order to a customer's account ("Deyn") from POS, and assign an
 // existing pending order to one from the Orders page — separate from plain POS access
 // (and from the 'customers' page permission, which only covers viewing/settling debt).
-const SUB_PERMISSION_IDS = ['pos_discount', 'orders_delete', 'pos_debt'];
+const SUB_PERMISSION_IDS = ['pos_discount', 'orders_delete', 'pos_debt', 'customers_delete'];
 
 const StaffSchema = new mongoose.Schema({
   restaurant: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true, index: true },

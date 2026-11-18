@@ -31,4 +31,5 @@ export const SUB_PERMISSIONS = [
   { id: 'pos_discount', pageId: 'pos', so: 'Dhimis · Discount-ka', en: 'Can apply discounts' },
   { id: 'orders_delete', pageId: 'orders', so: 'Tirtir dalabyada', en: 'Can delete orders' },
   { id: 'pos_debt', pageId: 'pos', so: 'Dalabka deyn ku dalici kara', en: 'Can charge orders to a customer account (Deyn)' },
+  { id: 'customers_delete', pageId: 'customers', so: 'Tirtir macaamiisha', en: 'Can delete customers' },
 ];
